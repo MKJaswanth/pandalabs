@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Layout } from './components/Layout'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -114,13 +114,13 @@ function AppShell() {
 
   return (
     <UserContext.Provider value={{ user, updateUser }}>
-      <BrowserRouter>
+      <HashRouter>
         <ErrorBoundary>
           <Layout>
             {appRoutes}
           </Layout>
         </ErrorBoundary>
-      </BrowserRouter>
+      </HashRouter>
     </UserContext.Provider>
   )
 }
