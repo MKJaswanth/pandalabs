@@ -70,7 +70,7 @@ function UserPill() {
         onClick={() => setOpen((o) => !o)}
       >
         {photoURL
-          ? <img className="user-pill-photo" src={photoURL} alt="" aria-hidden />
+          ? <img className="user-pill-photo" src={photoURL} alt="" aria-hidden referrerPolicy="no-referrer" />
           : <span className="user-pill-avatar">{initials}</span>
         }
         <span className="user-pill-name">{displayName}</span>
@@ -81,7 +81,7 @@ function UserPill() {
         <div className="user-dropdown" role="menu">
           <div className="user-dropdown-header">
             {photoURL
-              ? <img className="user-dropdown-photo" src={photoURL} alt="" aria-hidden />
+              ? <img className="user-dropdown-photo" src={photoURL} alt="" aria-hidden referrerPolicy="no-referrer" />
               : <span className="avatar">{initials}</span>
             }
             <div>
