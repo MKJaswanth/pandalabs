@@ -1,0 +1,104 @@
+:root {
+  --page-bg: #f6f7f8;
+  --surface: #ffffff;
+  --soft-bg: #eef3f2;
+  --table-stripe: #fafbfb;
+  --text-strong: #17201f;
+  --text-muted: #596562;
+  --text-soft: #87918e;
+  --border: #dde4e2;
+  --border-strong: #c1cbc8;
+  --accent: #0b766d;
+  --accent-strong: #075f58;
+  --accent-soft: #e3f1ef;
+  --success: #23764f;
+  --danger: #bb3b37;
+  --warning: #9a6a14;
+  --shadow-sm: 0 1px 2px rgba(23, 32, 31, 0.04);
+  --shadow-md: 0 10px 24px rgba(23, 32, 31, 0.07);
+  --shadow-lg: 0 18px 42px rgba(23, 32, 31, 0.11);
+  --sans: Aptos, 'Segoe UI', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+
+  /* Derived tokens */
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-glow-sm: 0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-glow-md: 0 8px 22px color-mix(in srgb, var(--accent) 22%, transparent);
+
+  color-scheme: light;
+  color: var(--text-muted);
+  background: var(--page-bg);
+  font-family: var(--sans);
+  font-size: 16px;
+  font-synthesis: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page-bg);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100svh;
+  margin: 0;
+  scrollbar-gutter: stable;
+}
+
+button,
+input,
+select {
+  letter-spacing: 0;
+}
+
+/* ── Brand selection colour ─────────────────────────────── */
+::selection {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text-strong);
+}
+
+/* ── Custom scrollbar ───────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-soft);
+}
+
+/* ── Keyframes ──────────────────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}

@@ -1,0 +1,274 @@
+import { Link } from 'react-router-dom'
+import { PageHeader } from '../components/PageHeader'
+import { StatusPill } from '../components/StatusPill'
+import { useUser } from '../context/UserContext'
+import { useProjects } from '../hooks/useProjects'
+import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
+import { ArrowRightIcon } from '../components/Icons'
+
+function QuickActionIcon({ name }) {
+  const common = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
+  const paths = {
+    project: <><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h4" /></>,
+    case: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="m3 6 .8.8L5.5 5" /><path d="m3 12 .8.8 1.7-1.8" /><path d="m3 18 .8.8 1.7-1.8" /></>,
+    bug: <><path d="M8 8a4 4 0 0 1 8 0v8a4 4 0 0 1-8 0Z" /><path d="M3 13h5" /><path d="M16 13h5" /><path d="M4 20l4-3" /><path d="m16 17 4 3" /><path d="M9 4 7 2" /><path d="m15 4 2-2" /></>,
+    report: <><path d="M4 19V5" /><path d="M20 19H4" /><path d="M8 15v-4" /><path d="M13 15V8" /><path d="M18 15v-6" /></>,
+  }
+  return <svg {...common}>{paths[name]}</svg>
+}
+
+export function DashboardPage() {
+  const { user } = useUser()
+  const { projects } = useProjects()
+
+  const enriched = projects.map((p) => {
+    const cases = getTestCases(p.id)
+    const bugs = getBugs(p.id)
+    const passed = cases.filter((c) => c.status === 'Pass').length
+    const passRate = cases.length ? Math.round((passed / cases.length) * 100) : 0
+    const openBugs = bugs.filter((b) => b.status !== 'Closed').length
+    return { ...p, cases: cases.length, openBugs, passRate }
+  })
+
+  const totalCases = enriched.reduce((s, p) => s + p.cases, 0)
+  const totalOpenBugs = enriched.reduce((s, p) => s + p.openBugs, 0)
+  const avgPassRate = enriched.length
+    ? Math.round(enriched.reduce((s, p) => s + p.passRate, 0) / enriched.length)
+    : 0
+
+  const metrics = [
+    { label: 'Projects', value: projects.length, tone: 'neutral' },
+    { label: 'Test cases', value: totalCases, tone: 'neutral' },
+    { label: 'Bugs open', value: totalOpenBugs, tone: totalOpenBugs > 0 ? 'danger' : 'neutral' },
+    { label: 'Pass rate', value: `${avgPassRate}%`, tone: avgPassRate >= 70 ? 'success' : avgPassRate >= 50 ? 'warning' : 'danger' },
+  ]
+
+  // Aggregate stats across all projects
+  const allBugs = []
+  const allBlockers = []
+  const allRuns = []
+
+  projects.forEach((p) => {
+    const pCases = getTestCases(p.id)
+    const pBugs = getBugs(p.id)
+    const pRuns = getTestRuns(p.id)
+
+    allBugs.push(...pBugs.map(b => ({ ...b, projectId: p.id, projectName: p.name })))
+    allBlockers.push(...pCases.filter(c => c.status === 'Blocker').map(c => ({ ...c, projectId: p.id, projectName: p.name })))
+    allRuns.push(...pRuns.map(r => ({ ...r, projectId: p.id, projectName: p.name })))
+  })
+
+  // Sort and filter lists
+  const activeBugs = allBugs
+    .filter((b) => b.status !== 'Closed')
+    .sort((a, b) => {
+      const sevOrder = { Critical: 0, Major: 1, Minor: 2 }
+      const sevA = sevOrder[a.severity] ?? 3
+      const sevB = sevOrder[b.severity] ?? 3
+      if (sevA !== sevB) return sevA - sevB
+      return new Date(b.reportedDate || b.createdAt) - new Date(a.reportedDate || a.createdAt)
+    })
+    .slice(0, 5)
+
+  const recentRuns = allRuns
+    .sort((a, b) => new Date(b.completedAt || b.date) - new Date(a.completedAt || a.date))
+    .slice(0, 5)
+
+  const severityTone = { Critical: 'failed', Major: 'pending', Minor: 'passed' }
+
+  // Empty state — no projects at all
+  if (projects.length === 0) {
+    return (
+      <>
+        <PageHeader
+          title={`Welcome, ${user}`}
+          description="Your QA workspace is ready. Create your first project to get started."
+        />
+        <section className="dashboard-empty">
+          <div className="dashboard-empty-icon" aria-hidden>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 11 2 2 4-4" />
+            </svg>
+          </div>
+          <h2>No projects yet</h2>
+          <p>Create a project to start tracking test cases, bugs, and pass rates.</p>
+          <Link to="/projects" className="primary-button" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', height: 36, padding: '0 16px' }}>
+            + Create first project
+          </Link>
+        </section>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <PageHeader
+        title={`Good day, ${user}`}
+        description="Global testing health across active QA projects."
+      />
+
+      <section className="metric-grid" aria-label="QA metrics">
+        {metrics.map((m) => (
+          <article className={`metric-card metric-card--${m.tone}`} key={m.label}>
+            <span>{m.label}</span>
+            <strong>{m.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="panel">
+        <div className="section-header">
+          <h2>Projects at a glance</h2>
+          <Link to="/projects" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>View all <ArrowRightIcon width={14} height={14} /></Link>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Test cases</th>
+                <th>Bugs open</th>
+                <th>Pass rate</th>
+                <th>Health</th>
+              </tr>
+            </thead>
+            <tbody>
+              {enriched.map((p) => (
+                <tr key={p.id}>
+                  <td><Link to={`/projects/${p.id}/test-cases`}>{p.name}</Link></td>
+                  <td>{p.cases}</td>
+                  <td className={p.openBugs > 0 ? 'metric-failed' : ''}>{p.openBugs}</td>
+                  <td>
+                    <div className="progress-cell">
+                      <span>{p.passRate}%</span>
+                      <div className="progress-track">
+                        <span style={{ width: `${p.passRate}%` }} />
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <StatusPill tone={p.passRate >= 70 ? 'passed' : p.passRate >= 50 ? 'pending' : 'failed'}>
+                      {p.passRate >= 70 ? 'Good' : p.passRate >= 50 ? 'Review' : 'At risk'}
+                    </StatusPill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Detail widgets grid */}
+      <div className="dashboard-details-grid">
+        {/* Active Blockers */}
+        <section className="panel dashboard-detail-panel">
+          <div className="section-header">
+            <h2>Active blockers</h2>
+            <StatusPill tone={allBlockers.length > 0 ? 'blocker' : 'passed'}>
+              {allBlockers.length} active
+            </StatusPill>
+          </div>
+          {allBlockers.length === 0 ? (
+            <p className="panel-empty-text">No active blockers. Testing is clear!</p>
+          ) : (
+            <div className="dashboard-list">
+              {allBlockers.slice(0, 5).map((tc) => (
+                <div className="dashboard-list-item" key={tc.id}>
+                  <div className="list-item-main">
+                    <span className="mono list-item-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
+                    <Link to={`/projects/${tc.projectId}/test-cases/${tc.id}`} className="list-item-title">{tc.title}</Link>
+                  </div>
+                  <div className="list-item-meta">
+                    <span className="meta-project">{tc.projectName}</span>
+                    {tc.assignee && <span className="meta-assignee"> · {tc.assignee}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Recent Runs */}
+        <section className="panel dashboard-detail-panel">
+          <div className="section-header">
+            <h2>Recent runs</h2>
+          </div>
+          {recentRuns.length === 0 ? (
+            <p className="panel-empty-text">No test runs recorded yet.</p>
+          ) : (
+            <div className="dashboard-list">
+              {recentRuns.map((run) => {
+                const passRate = run.total ? Math.round((run.passed / run.total) * 100) : 0
+                return (
+                  <div className="dashboard-list-item" key={run.id}>
+                    <div className="list-item-main">
+                      <Link to={`/projects/${run.projectId}/test-runs/${run.id}`} className="list-item-title">{run.name || 'Regression Run'}</Link>
+                      <span className="list-item-badge text-muted">{passRate}% pass</span>
+                    </div>
+                    <div className="list-item-meta">
+                      <span className="meta-project">{run.projectName}</span>
+                      <span className="meta-date"> · {new Date(run.completedAt || run.date).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* High Severity Bugs */}
+        <section className="panel dashboard-detail-panel">
+          <div className="section-header">
+            <h2>High-priority bugs</h2>
+            {activeBugs.length > 0 && (
+              <StatusPill tone="failed">{allBugs.filter(b => b.status !== 'Closed').length} open</StatusPill>
+            )}
+          </div>
+          {activeBugs.length === 0 ? (
+            <p className="panel-empty-text">No unresolved bugs reported.</p>
+          ) : (
+            <div className="dashboard-list">
+              {activeBugs.map((bug) => (
+                <div className="dashboard-list-item" key={bug.id}>
+                  <div className="list-item-main">
+                    <span className={`status-pill status-pill--${severityTone[bug.severity] || 'neutral'}`} style={{ fontSize: '9px', minHeight: '16px', padding: '0 4px', marginRight: '6px' }}>
+                      {bug.severity}
+                    </span>
+                    <Link to={`/projects/${bug.projectId}/bugs`} className="list-item-title">
+                      {bug.title}
+                    </Link>
+                  </div>
+                  <div className="list-item-meta">
+                    <span className="meta-project">{bug.projectName}</span>
+                    <span className="meta-status"> · {bug.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Quick actions */}
+      <section className="quick-actions">
+        <Link to="/projects" className="quick-action-card">
+          <span className="qa-icon"><QuickActionIcon name="project" /></span>
+          <span>New project</span>
+        </Link>
+        <Link to={`/projects/${enriched[0]?.id}/test-cases`} className="quick-action-card">
+          <span className="qa-icon"><QuickActionIcon name="case" /></span>
+          <span>Add test case</span>
+        </Link>
+        <Link to={`/projects/${enriched[0]?.id}/bugs`} className="quick-action-card">
+          <span className="qa-icon"><QuickActionIcon name="bug" /></span>
+          <span>Log bug</span>
+        </Link>
+        <Link to="/reports" className="quick-action-card">
+          <span className="qa-icon"><QuickActionIcon name="report" /></span>
+          <span>View reports</span>
+        </Link>
+      </section>
+    </>
+  )
+}
