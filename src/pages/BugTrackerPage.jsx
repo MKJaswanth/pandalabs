@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { XIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
+import { XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
 import { Link, useParams } from 'react-router-dom'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
@@ -10,10 +10,21 @@ import { useUser } from '../context/UserContext'
 import { useBugs } from '../hooks/useBugs'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useSortable } from '../hooks/useSortable'
 import { newId } from '../utils/id'
 import { downloadBugTemplate } from '../utils/export'
 import { BugBulkUploadModal } from '../components/BugBulkUploadModal'
 import { DownloadIcon, UploadIcon } from '../components/Icons'
+
+function SortTh({ col, label, active, dir, onSort }) {
+  const isActive = active === col
+  const Icon = isActive ? (dir === 'asc' ? SortAscIcon : SortDescIcon) : SortNoneIcon
+  return (
+    <th className={`sortable-th${isActive ? ' sortable-th--active' : ''}`} onClick={() => onSort(col)}>
+      {label} <Icon width={12} height={12} />
+    </th>
+  )
+}
 
 const PAGE_SIZES = [10, 25, 100]
 
@@ -208,6 +219,7 @@ export function BugTrackerPage() {
   const [fStatus, setFStatus] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
+  const { sorted: sortedBugs, sortKey: bugSortKey, sortDir: bugSortDir, toggle: bugToggle } = useSortable(bugs)
 
   const openAdd = () => {
     setForm({ ...blank(), reportedBy: user })
@@ -293,7 +305,7 @@ export function BugTrackerPage() {
 
   const tcTitle = (id) => testCases.find((tc) => tc.id === id)?.title
 
-  const visible = bugs.filter((b) => {
+  const visible = sortedBugs.filter((b) => {
     if (search && !b.title.toLowerCase().includes(search.toLowerCase())) return false
     if (fSeverity && b.severity !== fSeverity) return false
     if (fStatus && b.status !== fStatus) return false
@@ -354,11 +366,11 @@ export function BugTrackerPage() {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Title</th>
-                  <th>Module</th>
-                  <th>Severity</th>
-                  <th>Priority</th>
-                  <th>Status</th>
+                  <SortTh col="title"    label="Title"    active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
+                  <SortTh col="module"   label="Module"   active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
+                  <SortTh col="severity" label="Severity" active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
+                  <SortTh col="priority" label="Priority" active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
+                  <SortTh col="status"   label="Status"   active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
                   <th>Linked TC</th>
                   <th></th>
                 </tr>

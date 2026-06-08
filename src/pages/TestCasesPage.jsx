@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { UploadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
+import { UploadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
+import { useSortable } from '../hooks/useSortable'
 import { Link, useParams } from 'react-router-dom'
 import { BulkUploadModal } from '../components/BulkUploadModal'
 import { Modal } from '../components/Modal'
@@ -12,6 +13,16 @@ import { useTestCases } from '../hooks/useTestCases'
 import { useUser } from '../context/UserContext'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
+
+function SortTh({ col, label, active, dir, onSort }) {
+  const isActive = active === col
+  const Icon = isActive ? (dir === 'asc' ? SortAscIcon : SortDescIcon) : SortNoneIcon
+  return (
+    <th className={`sortable-th${isActive ? ' sortable-th--active' : ''}`} onClick={() => onSort(col)}>
+      {label} <Icon width={12} height={12} />
+    </th>
+  )
+}
 
 const PRIORITIES = ['High', 'Med', 'Low']
 const PAGE_SIZES = [10, 25, 100]
@@ -43,6 +54,7 @@ export function TestCasesPage() {
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkStatus, setBulkStatus] = useState('Pass')
+  const { sorted: sortedCases, sortKey: tcSortKey, sortDir: tcSortDir, toggle: tcToggle } = useSortable(testCases)
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const updateListControl = (setter) => (e) => {
@@ -127,7 +139,7 @@ export function TestCasesPage() {
   const modules = [...new Set(testCases.map((t) => t.module).filter(Boolean))]
   const assignees = [...new Set(testCases.map((t) => t.assignee).filter(Boolean))]
 
-  const visible = testCases.filter((tc) => {
+  const visible = sortedCases.filter((tc) => {
     if (search && !tc.title.toLowerCase().includes(search.toLowerCase())) return false
     if (fPriority && tc.priority !== fPriority) return false
     if (fStatus && tc.status !== fStatus) return false
@@ -215,11 +227,11 @@ export function TestCasesPage() {
                     />
                   </th>
                   <th>TC ID</th>
-                  <th>Title</th>
-                  <th>Module</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Assignee</th>
+                  <SortTh col="title"    label="Title"    active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                  <SortTh col="module"   label="Module"   active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                  <SortTh col="priority" label="Priority" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                  <SortTh col="status"   label="Status"   active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                  <SortTh col="assignee" label="Assignee" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                   <th></th>
                 </tr>
               </thead>

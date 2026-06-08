@@ -150,3 +150,40 @@ export const TrendingUpIcon = icon(
     <polyline points="16 7 22 7 22 13" />
   </>
 )
+
+export const PrintIcon = icon(
+  <>
+    <polyline points="6 9 6 2 18 2 18 9" />
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" />
+  </>
+)
+
+export const SortAscIcon = icon(
+  <>
+    <path d="M11 11V3" />
+    <path d="m7 7 4-4 4 4" />
+    <path d="M16 13h3" />
+    <path d="M16 17h5" />
+    <path d="M16 21h7" />
+  </>
+)
+
+export const SortDescIcon = icon(
+  <>
+    <path d="M11 13V21" />
+    <path d="m7 17 4 4 4-4" />
+    <path d="M16 3h7" />
+    <path d="M16 7h5" />
+    <path d="M16 11h3" />
+  </>
+)
+
+export const SortNoneIcon = icon(
+  <>
+    <path d="m3 16 4 4 4-4" />
+    <path d="M7 20V4" />
+    <path d="m21 8-4-4-4 4" />
+    <path d="M17 4v16" />
+  </>
+)

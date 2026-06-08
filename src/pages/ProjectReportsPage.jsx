@@ -7,7 +7,7 @@ import { useProjects } from '../hooks/useProjects'
 import { useTestCases } from '../hooks/useTestCases'
 import { useTestRuns } from '../hooks/useTestRuns'
 import { exportBugs, exportTestCases, exportTestRuns } from '../utils/export'
-import { BarChartIcon, DownloadIcon } from '../components/Icons'
+import { BarChartIcon, DownloadIcon, PrintIcon } from '../components/Icons'
 
 export function ProjectReportsPage() {
   const { projectId } = useParams()
@@ -91,6 +91,9 @@ export function ProjectReportsPage() {
             <button className="secondary-button" type="button"
               onClick={() => exportTestRuns(runs, projectName)}>
               <DownloadIcon width={14} height={14} /> Export runs
+            </button>
+            <button className="secondary-button" type="button" onClick={() => window.print()}>
+              <PrintIcon width={14} height={14} /> Print report
             </button>
           </div>
         }
