@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/useAuth'
 import { useUser } from '../context/UserContext'
 import { useProjects } from '../hooks/useProjects'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'

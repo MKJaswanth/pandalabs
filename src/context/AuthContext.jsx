@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
@@ -9,20 +9,16 @@ import {
   updateProfile,
 } from 'firebase/auth'
 import { auth, isFirebaseEnabled } from '../utils/firebase'
-
-const AuthContext = createContext(null)
+import { AuthContext } from './AuthContextCore'
 
 const googleProvider = new GoogleAuthProvider()
 
 export function AuthProvider({ children }) {
   // undefined = still resolving, null = not signed in, object = signed in
-  const [firebaseUser, setFirebaseUser] = useState(undefined)
+  const [firebaseUser, setFirebaseUser] = useState(() => (isFirebaseEnabled ? undefined : null))
 
   useEffect(() => {
-    if (!isFirebaseEnabled) {
-      setFirebaseUser(null)
-      return
-    }
+    if (!isFirebaseEnabled) return undefined
     return onAuthStateChanged(auth, (user) => setFirebaseUser(user))
   }, [])
 
@@ -51,5 +47,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   )
 }
-
-export const useAuth = () => useContext(AuthContext)
