@@ -24,9 +24,10 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!isFirebaseEnabled) return undefined
 
-    // Complete any pending Google redirect sign-in and surface errors to the UI
+    // Complete any pending Google redirect sign-in and surface errors to the UI.
+    // Only surface proper Firebase auth codes — generic JS errors are silently ignored.
     getRedirectResult(auth).catch((err) => {
-      setRedirectError(err.code ?? 'auth/unknown')
+      if (err?.code?.startsWith('auth/')) setRedirectError(err.code)
     })
 
     return onAuthStateChanged(auth, (user) => setFirebaseUser(user))

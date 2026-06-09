@@ -185,6 +185,7 @@ function friendlyError(code) {
     'auth/unauthorized-domain':       'This domain is not authorised for sign-in. Open Firebase Console → Authentication → Settings → Authorized Domains and add this site\'s URL.',
     'auth/operation-not-allowed':     'Google sign-in is not enabled. In Firebase Console go to Authentication → Sign-in methods and enable Google.',
     'auth/internal-error':            'Firebase returned an internal error. Check the browser console for more details.',
+    'auth/admin-restricted-operation': 'Guest sign-in is not enabled. Go to Firebase Console → Authentication → Sign-in methods → Anonymous and enable it.',
     'auth/unknown':                   'An unknown error occurred. Check the browser console for details.',
   }
   return map[code] ?? `Sign-in failed (${code ?? 'unknown'}). Please try again.`
