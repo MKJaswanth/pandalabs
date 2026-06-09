@@ -13,7 +13,7 @@ function GoogleIcon() {
 }
 
 export function AuthPage() {
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth()
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, signInAsGuest, redirectError } = useAuth()
   const [mode, setMode] = useState('login') // 'login' | 'register'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,11 +23,26 @@ export function AuthPage() {
 
   const clearError = () => setError('')
 
+  // Combine local form errors with any redirect sign-in error
+  const displayError = error || (redirectError ? friendlyError(redirectError) : '')
+
   const handleGoogle = async () => {
     setLoading(true)
     clearError()
     try {
       await signInWithGoogle()
+      // Page will redirect away; code below only runs if signInWithRedirect throws
+    } catch (err) {
+      setError(friendlyError(err.code))
+      setLoading(false)
+    }
+  }
+
+  const handleGuest = async () => {
+    setLoading(true)
+    clearError()
+    try {
+      await signInAsGuest()
     } catch (err) {
       setError(friendlyError(err.code))
       setLoading(false)
@@ -75,7 +90,7 @@ export function AuthPage() {
           disabled={loading}
         >
           <GoogleIcon />
-          Continue with Google
+          {loading ? 'Redirecting…' : 'Continue with Google'}
         </button>
 
         <div className="auth-divider"><span>or</span></div>
@@ -120,7 +135,7 @@ export function AuthPage() {
             />
           </label>
 
-          {error && <p className="auth-error" role="alert">{error}</p>}
+          {displayError && <p className="auth-error" role="alert">{displayError}</p>}
 
           <button type="submit" className="primary-button auth-submit" disabled={loading}>
             {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
@@ -134,6 +149,21 @@ export function AuthPage() {
             <>Already have an account? <button type="button" className="link-btn" onClick={() => { setMode('login'); clearError() }}>Sign in</button></>
           )}
         </p>
+
+        <div className="auth-divider"><span>or</span></div>
+
+        {/* Guest access */}
+        <button
+          type="button"
+          className="guest-btn"
+          onClick={handleGuest}
+          disabled={loading}
+        >
+          Continue as guest
+        </button>
+        <p className="auth-guest-note">
+          No account needed. Data is saved in this browser only.
+        </p>
       </div>
     </div>
   )
@@ -141,15 +171,21 @@ export function AuthPage() {
 
 function friendlyError(code) {
   const map = {
-    'auth/invalid-credential':       'Incorrect email or password.',
-    'auth/user-not-found':           'No account found with that email.',
-    'auth/wrong-password':           'Incorrect password.',
-    'auth/email-already-in-use':     'An account with this email already exists.',
-    'auth/weak-password':            'Password must be at least 6 characters.',
-    'auth/invalid-email':            'Please enter a valid email address.',
-    'auth/too-many-requests':        'Too many attempts. Please try again later.',
-    'auth/popup-closed-by-user':     'Sign-in cancelled.',
-    'auth/network-request-failed':   'Network error. Check your connection.',
+    'auth/invalid-credential':        'Incorrect email or password.',
+    'auth/user-not-found':            'No account found with that email.',
+    'auth/wrong-password':            'Incorrect password.',
+    'auth/email-already-in-use':      'An account with this email already exists.',
+    'auth/weak-password':             'Password must be at least 6 characters.',
+    'auth/invalid-email':             'Please enter a valid email address.',
+    'auth/too-many-requests':         'Too many attempts. Please try again later.',
+    'auth/popup-closed-by-user':      'Sign-in cancelled.',
+    'auth/cancelled-popup-request':   'Sign-in cancelled.',
+    'auth/popup-blocked':             'Pop-up blocked by your browser. Please allow pop-ups for this site and try again.',
+    'auth/network-request-failed':    'Network error. Check your connection and try again.',
+    'auth/unauthorized-domain':       'This domain is not authorised for sign-in. Open Firebase Console → Authentication → Settings → Authorized Domains and add this site\'s URL.',
+    'auth/operation-not-allowed':     'Google sign-in is not enabled. In Firebase Console go to Authentication → Sign-in methods and enable Google.',
+    'auth/internal-error':            'Firebase returned an internal error. Check the browser console for more details.',
+    'auth/unknown':                   'An unknown error occurred. Check the browser console for details.',
   }
-  return map[code] ?? 'Something went wrong. Please try again.'
+  return map[code] ?? `Sign-in failed (${code ?? 'unknown'}). Please try again.`
 }

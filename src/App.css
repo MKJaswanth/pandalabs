@@ -2475,6 +2475,50 @@ button { font-family: inherit; }
   color: var(--text-muted);
 }
 
+.guest-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  margin-top: 4px;
+}
+.guest-btn:hover:not(:disabled) {
+  background: var(--soft-bg);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.guest-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.auth-guest-note {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.user-guest-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
 /* App loading spinner */
 .app-loading {
   min-height: 100svh;

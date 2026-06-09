@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
+  getRedirectResult,
   onAuthStateChanged,
+  signInAnonymously,
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
   updateProfile,
 } from 'firebase/auth'
@@ -16,13 +18,22 @@ const googleProvider = new GoogleAuthProvider()
 export function AuthProvider({ children }) {
   // undefined = still resolving, null = not signed in, object = signed in
   const [firebaseUser, setFirebaseUser] = useState(() => (isFirebaseEnabled ? undefined : null))
+  // Error surfaced from getRedirectResult after returning from a Google sign-in redirect
+  const [redirectError, setRedirectError] = useState(null)
 
   useEffect(() => {
     if (!isFirebaseEnabled) return undefined
+
+    // Complete any pending Google redirect sign-in and surface errors to the UI
+    getRedirectResult(auth).catch((err) => {
+      setRedirectError(err.code ?? 'auth/unknown')
+    })
+
     return onAuthStateChanged(auth, (user) => setFirebaseUser(user))
   }, [])
 
-  const signInWithGoogle = () => signInWithPopup(auth, googleProvider)
+  // Uses redirect instead of popup: works on all browsers/devices without popup-blocker issues
+  const signInWithGoogle = () => signInWithRedirect(auth, googleProvider)
 
   const signInWithEmail = (email, password) =>
     signInWithEmailAndPassword(auth, email, password)
@@ -32,15 +43,19 @@ export function AuthProvider({ children }) {
     if (displayName?.trim()) await updateProfile(user, { displayName: displayName.trim() })
   }
 
+  const signInAsGuest = () => signInAnonymously(auth)
+
   const signOut = () => firebaseSignOut(auth)
 
   return (
     <AuthContext.Provider value={{
       firebaseUser,
       loading: firebaseUser === undefined,
+      redirectError,
       signInWithGoogle,
       signInWithEmail,
       signUpWithEmail,
+      signInAsGuest,
       signOut,
     }}>
       {children}

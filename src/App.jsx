@@ -85,7 +85,9 @@ function AppShell() {
   // Auto-populate display name from Firebase profile on first sign-in
   useEffect(() => {
     if (isFirebaseEnabled && firebaseUser && !user) {
-      const name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User'
+      const name = firebaseUser.isAnonymous
+        ? 'Guest'
+        : (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User')
       updateUser(name)
     }
   }, [firebaseUser, user, updateUser])

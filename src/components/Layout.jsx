@@ -53,9 +53,10 @@ function UserPill() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  const isGuest = isFirebaseEnabled && firebaseUser?.isAnonymous
   const displayName = user || firebaseUser?.displayName || firebaseUser?.email || 'User'
   const initials = displayName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
-  const photoURL = firebaseUser?.photoURL
+  const photoURL = !isGuest ? firebaseUser?.photoURL : null
 
   const startEdit = () => { setDraft(user); setEditing(true); setOpen(false) }
   const saveEdit = (e) => { e.preventDefault(); updateUser(draft); setEditing(false) }
@@ -74,6 +75,7 @@ function UserPill() {
           : <span className="user-pill-avatar">{initials}</span>
         }
         <span className="user-pill-name">{displayName}</span>
+        {isGuest && <span className="user-guest-badge">Guest</span>}
         <ChevronDownIcon width={12} height={12} />
       </button>
 
@@ -86,21 +88,33 @@ function UserPill() {
             }
             <div>
               <strong>{displayName}</strong>
-              <span>{firebaseUser?.email ?? 'Local mode'}</span>
+              <span>{isGuest ? 'Sign in to sync across devices' : (firebaseUser?.email ?? 'Local mode')}</span>
             </div>
           </div>
           <hr className="user-dropdown-divider" />
-          <button className="user-dropdown-item" role="menuitem" onClick={startEdit}>
-            Edit display name
-          </button>
-          {isFirebaseEnabled && firebaseUser && (
-            <button
-              className="user-dropdown-item user-dropdown-item--danger"
-              role="menuitem"
-              onClick={() => { setOpen(false); signOut() }}
-            >
-              Sign out
+          {!isGuest && (
+            <button className="user-dropdown-item" role="menuitem" onClick={startEdit}>
+              Edit display name
             </button>
+          )}
+          {isFirebaseEnabled && firebaseUser && (
+            isGuest ? (
+              <button
+                className="user-dropdown-item"
+                role="menuitem"
+                onClick={() => { setOpen(false); signOut() }}
+              >
+                Sign in / Create account
+              </button>
+            ) : (
+              <button
+                className="user-dropdown-item user-dropdown-item--danger"
+                role="menuitem"
+                onClick={() => { setOpen(false); signOut() }}
+              >
+                Sign out
+              </button>
+            )
           )}
         </div>
       )}
