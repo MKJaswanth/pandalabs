@@ -90,7 +90,7 @@ export function AuthPage() {
           disabled={loading}
         >
           <GoogleIcon />
-          {loading ? 'Redirecting…' : 'Continue with Google'}
+          {loading ? 'Signing in…' : 'Continue with Google'}
         </button>
 
         <div className="auth-divider"><span>or</span></div>

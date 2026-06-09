@@ -6,6 +6,7 @@ import {
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signInWithRedirect,
   signOut as firebaseSignOut,
   updateProfile,
@@ -33,8 +34,18 @@ export function AuthProvider({ children }) {
     return onAuthStateChanged(auth, (user) => setFirebaseUser(user))
   }, [])
 
-  // Uses redirect instead of popup: works on all browsers/devices without popup-blocker issues
-  const signInWithGoogle = () => signInWithRedirect(auth, googleProvider)
+  // Try popup first (immediate result, no page navigation); fall back to redirect
+  // if the browser blocks the popup (mobile browsers, strict settings).
+  const signInWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider)
+    } catch (err) {
+      if (err.code === 'auth/popup-blocked') {
+        return signInWithRedirect(auth, googleProvider)
+      }
+      throw err
+    }
+  }
 
   const signInWithEmail = (email, password) =>
     signInWithEmailAndPassword(auth, email, password)
