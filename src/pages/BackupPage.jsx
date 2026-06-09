@@ -2,6 +2,14 @@ import { useRef, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
+import { isFirebaseEnabled } from '../utils/firebase'
+import {
+  saveBugRemote,
+  saveProjectRemote,
+  saveTeamMemberRemote,
+  saveTestCaseRemote,
+  saveTestRunRemote,
+} from '../utils/remoteStorage'
 import {
   createWorkspaceBackup,
   downloadWorkspaceBackup,
@@ -22,6 +30,20 @@ function SummaryGrid({ summary }) {
   )
 }
 
+async function syncBackupToCloud(backup) {
+  const { projects, teamMembers, projectData } = backup.data
+  for (const member of teamMembers) {
+    await saveTeamMemberRemote(member)
+  }
+  for (const project of projects) {
+    await saveProjectRemote(project)
+    const data = projectData[project.id] ?? {}
+    for (const tc of data.testCases ?? []) await saveTestCaseRemote(project.id, tc)
+    for (const bug of data.bugs ?? []) await saveBugRemote(project.id, bug)
+    for (const run of data.runs ?? []) await saveTestRunRemote(project.id, run)
+  }
+}
+
 export function BackupPage() {
   const confirm = useConfirm()
   const toast = useToast()
@@ -29,13 +51,12 @@ export function BackupPage() {
   const [parsed, setParsed] = useState(null)
   const [error, setError] = useState('')
   const [mode, setMode] = useState('merge')
-  const [restored, setRestored] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const currentSummary = summarizeBackup(createWorkspaceBackup())
   const importSummary = parsed ? summarizeBackup(parsed) : null
 
   const readFile = (file) => {
     setError('')
-    setRestored(false)
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
@@ -46,23 +67,44 @@ export function BackupPage() {
         setError(err.message)
       }
     }
+    reader.onerror = () => setError('Could not read the selected file.')
     reader.readAsText(file)
   }
 
-  const restore = async () => {
+  const doRestore = async (syncToCloud) => {
     if (!parsed) return
     if (mode === 'replace') {
       const ok = await confirm({
         title: 'Replace workspace?',
-        message: 'Replace the current workspace with this backup? This cannot be undone unless you already exported a backup.',
+        message: 'This will permanently overwrite the current workspace with the backup. Make sure you have exported a copy first.',
         confirmLabel: 'Replace workspace',
         danger: true,
       })
       if (!ok) return
     }
-    restoreWorkspaceBackup(parsed, mode)
-    setRestored(true)
-    toast.success(mode === 'replace' ? 'Workspace restored' : 'Backup merged')
+
+    try {
+      restoreWorkspaceBackup(parsed, mode)
+
+      if (syncToCloud) {
+        setSyncing(true)
+        try {
+          await syncBackupToCloud(parsed)
+          toast.success('Workspace restored and synced to cloud.')
+        } catch (err) {
+          toast.warning(`Restored locally, but cloud sync failed: ${err.message}`)
+        } finally {
+          setSyncing(false)
+        }
+      } else {
+        toast.success(mode === 'replace' ? 'Workspace restored from backup.' : 'Backup merged into workspace.')
+      }
+
+      // Reload so all hooks re-initialise from updated localStorage
+      setTimeout(() => window.location.reload(), 900)
+    } catch (err) {
+      toast.error(`Restore failed: ${err.message}`)
+    }
   }
 
   return (
@@ -145,19 +187,32 @@ export function BackupPage() {
               </div>
 
               <div className="restore-actions">
-                <button className="secondary-button" type="button" onClick={() => { setParsed(null); setError(''); setRestored(false) }}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => { setParsed(null); setError('') }}
+                >
                   Clear file
                 </button>
-                <button className="primary-button" type="button" onClick={restore}>
-                  Restore workspace
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={syncing}
+                  onClick={() => doRestore(false)}
+                >
+                  Restore locally
                 </button>
+                {isFirebaseEnabled && (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={syncing}
+                    onClick={() => doRestore(true)}
+                  >
+                    {syncing ? 'Syncing…' : 'Restore & sync to cloud'}
+                  </button>
+                )}
               </div>
-            </div>
-          )}
-
-          {restored && (
-            <div className="backup-alert backup-alert--success">
-              Workspace restored. Navigate to Dashboard or Projects to review the imported data.
             </div>
           )}
         </article>

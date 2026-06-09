@@ -72,27 +72,52 @@ export function validateWorkspaceBackup(raw) {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error('This is not valid JSON.')
+    throw new Error('This is not valid JSON. Make sure the file was not corrupted.')
   }
 
-  if (parsed?.app !== 'qa-manager' || !parsed.data) {
-    throw new Error('This file is not a QA Lab workspace backup.')
+  // Accept both 'qa-manager' and 'qa-lab' app identifiers (older backups used 'qa-lab')
+  const knownApps = ['qa-manager', 'qa-lab']
+  if (!parsed?.data) {
+    throw new Error('This file is not a QA Lab workspace backup (missing data field).')
+  }
+  if (parsed.app && !knownApps.includes(parsed.app)) {
+    throw new Error(`Unrecognised backup app identifier "${parsed.app}". Expected a QA Lab backup.`)
   }
 
   const { projects, teamMembers, projectData } = parsed.data
-  if (!Array.isArray(projects)) throw new Error('Backup is missing the projects list.')
-  if (!Array.isArray(teamMembers)) throw new Error('Backup is missing the team members list.')
-  if (!projectData || typeof projectData !== 'object') throw new Error('Backup is missing project data.')
+
+  if (!Array.isArray(projects)) {
+    throw new Error('Backup is missing or has an invalid projects list.')
+  }
+
+  // teamMembers is optional in older backups — default to empty array
+  if (teamMembers !== undefined && !Array.isArray(teamMembers)) {
+    throw new Error('Backup has invalid team members data.')
+  }
+
+  // projectData may be absent in minimal backups — default to empty object
+  if (projectData !== undefined && (typeof projectData !== 'object' || Array.isArray(projectData))) {
+    throw new Error('Backup has invalid project data format.')
+  }
+
+  const safeProjectData = projectData ?? {}
 
   projects.forEach((project) => {
-    if (!project?.id || !project?.name) throw new Error('A project in the backup is missing id or name.')
-    const data = projectData[project.id] ?? {}
+    if (!project?.id || !project?.name) {
+      throw new Error('A project entry in the backup is missing a required id or name field.')
+    }
+    const data = safeProjectData[project.id] ?? {}
     ;['testCases', 'bugs', 'runs'].forEach((key) => {
-      if (data[key] && !Array.isArray(data[key])) {
-        throw new Error(`Project ${project.name} has invalid ${key} data.`)
+      if (data[key] !== undefined && !Array.isArray(data[key])) {
+        throw new Error(`Project "${project.name}" has invalid ${key} data (expected an array).`)
       }
     })
   })
+
+  // Normalise to a consistent shape so restoreWorkspaceBackup can assume these fields
+  if (!Array.isArray(parsed.data.teamMembers)) parsed.data.teamMembers = []
+  if (!parsed.data.projectData) parsed.data.projectData = {}
+  if (!parsed.exportedAt) parsed.exportedAt = new Date().toISOString()
 
   return parsed
 }

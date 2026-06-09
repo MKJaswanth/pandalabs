@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { UploadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
 import { useSortable } from '../hooks/useSortable'
 import { Link, useParams } from 'react-router-dom'
@@ -54,7 +54,15 @@ export function TestCasesPage() {
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkStatus, setBulkStatus] = useState('Pass')
-  const { sorted: sortedCases, sortKey: tcSortKey, sortDir: tcSortDir, toggle: tcToggle } = useSortable(testCases)
+  // Add a computed _tcId field so useSortable can sort by TC ID as a plain string
+  const sortableTestCases = useMemo(
+    () => testCases.map((tc) => ({
+      ...tc,
+      _tcId: tc.sourceTcId || tc.id.slice(0, 8).toUpperCase(),
+    })),
+    [testCases],
+  )
+  const { sorted: sortedCases, sortKey: tcSortKey, sortDir: tcSortDir, toggle: tcToggle } = useSortable(sortableTestCases)
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const updateListControl = (setter) => (e) => {
@@ -226,7 +234,7 @@ export function TestCasesPage() {
                       onChange={toggleVisiblePage}
                     />
                   </th>
-                  <th>TC ID</th>
+                  <SortTh col="_tcId" label="TC ID" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                   <SortTh col="title"    label="Title"    active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                   <SortTh col="module"   label="Module"   active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                   <SortTh col="priority" label="Priority" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />

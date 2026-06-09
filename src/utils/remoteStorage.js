@@ -25,9 +25,9 @@ function ensureFirebase() {
 }
 
 function cleanRecord(record) {
-  return Object.fromEntries(
-    Object.entries(record).filter(([, value]) => value !== undefined),
-  )
+  // JSON round-trip strips all undefined at every nesting level, which
+  // Firestore requires (it rejects documents with undefined values).
+  return JSON.parse(JSON.stringify(record))
 }
 
 function byCreatedAtDesc(a, b) {

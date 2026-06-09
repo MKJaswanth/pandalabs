@@ -4,11 +4,15 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { CheckIcon } from '../components/Icons'
 import { useUser } from '../context/UserContext'
+import { useConfirm } from '../context/useConfirm'
+import { useToast } from '../context/useToast'
 import { useBugs } from '../hooks/useBugs'
 import { useProjects } from '../hooks/useProjects'
 import { useTestCases } from '../hooks/useTestCases'
 import { useTestRuns } from '../hooks/useTestRuns'
 import { historyEntry, withHistory } from '../utils/history'
+import { newId } from '../utils/id'
+import { clearRunDraft, getRunDraft, saveRunDraft } from '../utils/runDrafts'
 import { STATUS_TONE, TEST_STATUSES, summarizeStatuses } from '../utils/status'
 
 const BUG_STATUSES = ['Open', 'In review', 'Closed']
@@ -47,11 +51,16 @@ function RunSummary({ summary }) {
 export function TestRunsPage() {
   const { projectId } = useParams()
   const { user } = useUser()
+  const confirm = useConfirm()
+  const toast = useToast()
   const { projects } = useProjects()
   const { testCases, updateTestCase } = useTestCases(projectId)
   const { addBug } = useBugs(projectId)
   const { runs, addRun } = useTestRuns(projectId)
   const project = projects.find((p) => p.id === projectId)
+
+  // Persisted draft loaded once at mount — shows resume banner until consumed or dismissed
+  const [draft, setDraft] = useState(() => getRunDraft(projectId))
 
   const [mode, setMode] = useState('setup')
   const [runName, setRunName] = useState('')
@@ -62,6 +71,11 @@ export function TestRunsPage() {
   const [savedRun, setSavedRun] = useState(null)
   const [bugForm, setBugForm] = useState(null)
   const [bugsLogged, setBugsLogged] = useState(0)
+  // track which case IDs already have a bug logged (to avoid duplicates at finish)
+  const [loggedBugCaseIds, setLoggedBugCaseIds] = useState([])
+  // track IDs of bugs logged manually during execution
+  const [loggedBugIds, setLoggedBugIds] = useState([])
+  const [startedAt, setStartedAt] = useState(null)
 
   const selectedCases = useMemo(
     () => testCases.filter((tc) => selectedIds.includes(tc.id)),
@@ -94,24 +108,58 @@ export function TestRunsPage() {
       tc.id,
       { status: 'Not Executed', actual: '' },
     ]))
+    const now = new Date().toISOString()
     setResults(initial)
     setCurrentIndex(0)
     setSavedRun(null)
     setBugsLogged(0)
+    setLoggedBugCaseIds([])
+    setLoggedBugIds([])
+    setStartedAt(now)
+    setDraft(null)
     setMode('execute')
+    // Persist draft synchronously so a refresh right after Start still offers resume
+    saveRunDraft(projectId, {
+      runName,
+      build,
+      selectedIds,
+      currentIndex: 0,
+      results: initial,
+      bugsLogged: 0,
+      loggedBugCaseIds: [],
+      loggedBugIds: [],
+      startedAt: now,
+    })
   }
 
   const startRunWithIds = (ids) => {
     setSelectedIds(ids)
     const cases = testCases.filter((tc) => ids.includes(tc.id))
-    setResults(Object.fromEntries(cases.map((tc) => [
+    const initial = Object.fromEntries(cases.map((tc) => [
       tc.id,
       { status: 'Not Executed', actual: '' },
-    ])))
+    ]))
+    const now = new Date().toISOString()
+    setResults(initial)
     setCurrentIndex(0)
     setSavedRun(null)
     setBugsLogged(0)
+    setLoggedBugCaseIds([])
+    setLoggedBugIds([])
+    setStartedAt(now)
+    setDraft(null)
     setMode('execute')
+    saveRunDraft(projectId, {
+      runName,
+      build,
+      selectedIds: ids,
+      currentIndex: 0,
+      results: initial,
+      bugsLogged: 0,
+      loggedBugCaseIds: [],
+      loggedBugIds: [],
+      startedAt: now,
+    })
   }
 
   const updateCurrent = (patch) => {
@@ -132,27 +180,70 @@ export function TestRunsPage() {
       return {
         testCaseId: tc.id,
         title: tc.title,
-        module: tc.module,
-        priority: tc.priority,
-        assignee: tc.assignee,
-        expected: tc.expected,
+        module: tc.module ?? '',
+        priority: tc.priority ?? '',
+        assignee: tc.assignee ?? '',
+        expected: tc.expected ?? '',
         status: result.status,
-        actual: result.actual,
+        actual: result.actual ?? '',
       }
     })
+
     const summary = summarizeStatuses(executed)
+    const passRate = summary.total ? Math.round((summary.passed / summary.total) * 100) : 0
+    const runId = newId()
+
+    // Auto-create bugs for Fail/Blocker cases that didn't have a bug logged manually
+    const autoBugIds = []
+    const failedUnlogged = executed.filter(
+      (tc) => (tc.status === 'Fail' || tc.status === 'Blocker') && !loggedBugCaseIds.includes(tc.testCaseId),
+    )
+    for (const tc of failedUnlogged) {
+      const bug = addBug({
+        title: `${tc.title} failed during run`,
+        description: tc.actual ? `Actual result: ${tc.actual}` : '',
+        severity: tc.status === 'Blocker' ? 'Critical' : 'Major',
+        status: 'Open',
+        linkedTestCase: tc.testCaseId,
+        module: tc.module || '',
+        priority: tc.priority || '',
+        reportedBy: user,
+        linkedRunId: runId,
+        history: [historyEntry('created', user, 'Auto-created from failed test run execution')],
+      })
+      autoBugIds.push(bug.id)
+    }
+
+    const totalBugsLogged = bugsLogged + autoBugIds.length
+    const allLinkedBugIds = [...loggedBugIds, ...autoBugIds]
+
     const run = addRun({
+      id: runId,
       name: runName.trim() || `${project?.name ?? 'Project'} run`,
-      build: build.trim(),
-      executedBy: user,
+      build: build.trim() || '',
+      executedBy: user ?? '',
+      startedAt: startedAt ?? new Date().toISOString(),
       completedAt: new Date().toISOString(),
       cases: executed,
-      bugsLogged,
+      bugsLogged: totalBugsLogged,
+      linkedBugIds: allLinkedBugIds,
       failureModules: failingModules(executed),
+      passRate,
       ...summary,
     })
+
+    // Draft is no longer needed — run was persisted successfully
+    clearRunDraft(projectId)
+    setDraft(null)
+
     setSavedRun(run)
     setMode('complete')
+
+    if (autoBugIds.length > 0) {
+      toast.info(`Run saved. ${autoBugIds.length} bug${autoBugIds.length !== 1 ? 's' : ''} auto-logged for failed cases.`)
+    } else {
+      toast.success('Run saved successfully.')
+    }
   }
 
   const openRunBug = () => {
@@ -171,14 +262,75 @@ export function TestRunsPage() {
   const handleRunBug = (event) => {
     event.preventDefault()
     if (!bugForm?.title.trim()) return
-    addBug({
+    const bug = addBug({
       ...bugForm,
+      reportedBy: user,
       history: [historyEntry('created', user, 'Bug created during test run execution')],
     })
     setBugsLogged((count) => count + 1)
+    setLoggedBugCaseIds((ids) => [...ids, currentCase.id])
+    setLoggedBugIds((ids) => [...ids, bug.id])
     setBugForm(null)
+    toast.success('Bug logged.')
   }
 
+  // ── Draft: resume ──────────────────────────────────────────────────────────
+  const resumeDraft = () => {
+    if (!draft) return
+    // Discard any case IDs that have since been deleted from the project
+    const validIds = (draft.selectedIds ?? []).filter((id) => testCases.some((tc) => tc.id === id))
+    if (validIds.length === 0) {
+      clearRunDraft(projectId)
+      setDraft(null)
+      toast.warning('All test cases from the saved draft no longer exist. Draft discarded.')
+      return
+    }
+    const safeIndex = Math.min(draft.currentIndex ?? 0, validIds.length - 1)
+    setRunName(draft.runName ?? '')
+    setBuild(draft.build ?? '')
+    setSelectedIds(validIds)
+    setCurrentIndex(safeIndex)
+    setResults(draft.results ?? {})
+    setBugsLogged(draft.bugsLogged ?? 0)
+    setLoggedBugCaseIds(draft.loggedBugCaseIds ?? [])
+    setLoggedBugIds(draft.loggedBugIds ?? [])
+    setStartedAt(draft.startedAt ?? new Date().toISOString())
+    setSavedRun(null)
+    setDraft(null)
+    setMode('execute')
+  }
+
+  // ── Draft: discard ─────────────────────────────────────────────────────────
+  const discardDraft = async () => {
+    const ok = await confirm({
+      title: 'Discard draft?',
+      message: 'The saved progress for this test run will be permanently deleted.',
+      confirmLabel: 'Discard',
+      danger: true,
+    })
+    if (!ok) return
+    clearRunDraft(projectId)
+    setDraft(null)
+    toast.success('Draft discarded.')
+  }
+
+  // ── Draft: autosave during execution ───────────────────────────────────────
+  useEffect(() => {
+    if (mode !== 'execute') return
+    saveRunDraft(projectId, {
+      runName,
+      build,
+      selectedIds,
+      currentIndex,
+      results,
+      bugsLogged,
+      loggedBugCaseIds,
+      loggedBugIds,
+      startedAt,
+    })
+  }, [mode, projectId, runName, build, selectedIds, currentIndex, results, bugsLogged, loggedBugCaseIds, loggedBugIds, startedAt])
+
+  // ── Keyboard shortcuts during execution ────────────────────────────────────
   useEffect(() => {
     if (mode !== 'execute' || bugForm) return
     const handler = (event) => {
@@ -204,12 +356,35 @@ export function TestRunsPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [bugForm, currentCase, mode, selectedCases.length])
 
+  // Derive a human-readable draft age string for the banner
+  const draftAge = draft?.startedAt
+    ? new Date(draft.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : null
+  const draftExecutedCount = Object.values(draft?.results ?? {}).filter((r) => r.status !== 'Not Executed').length
+
   return (
     <>
       <PageHeader
         title="Test runs"
         description="Select test cases, execute them, and save run history for release reporting."
       />
+
+      {mode === 'setup' && draft && (
+        <div className="run-draft-banner">
+          <div className="run-draft-banner-text">
+            <strong>Unfinished run</strong>
+            <span>
+              {draft.runName || 'Unnamed run'}
+              {draftAge ? ` • started ${draftAge}` : ''}
+              {' • '}
+              {draft.selectedIds?.length ?? 0} case{(draft.selectedIds?.length ?? 0) !== 1 ? 's' : ''},
+              {' '}{draftExecutedCount} executed
+            </span>
+          </div>
+          <button className="secondary-button" type="button" onClick={resumeDraft}>Resume run</button>
+          <button className="secondary-button" type="button" onClick={discardDraft}>Discard</button>
+        </div>
+      )}
 
       {mode === 'setup' && (
         <section className="panel run-setup">
@@ -273,6 +448,15 @@ export function TestRunsPage() {
               </table>
             </div>
           )}
+        </section>
+      )}
+
+      {mode === 'execute' && selectedCases.length === 0 && (
+        <section className="panel" style={{ textAlign: 'center', padding: '32px 20px' }}>
+          <p className="muted-text">No test cases available for this run. They may have been deleted.</p>
+          <button className="secondary-button" type="button" style={{ marginTop: 12 }} onClick={() => { clearRunDraft(projectId); setMode('setup') }}>
+            Back to setup
+          </button>
         </section>
       )}
 
