@@ -7,11 +7,12 @@ import {
   setDoc,
   writeBatch,
 } from 'firebase/firestore'
-import { auth, db, defaultWorkspaceId, isFirebaseEnabled } from './firebase'
+import { db, defaultWorkspaceId, isFirebaseEnabled } from './firebase'
 
-// Resolve workspace ID at call time: authenticated UID takes priority, then env fallback
+// Resolve workspace ID at call time. QA Lab is a shared team workspace, so
+// the configured workspace ID must be stable across signed-in users.
 function getWorkspaceId() {
-  return auth?.currentUser?.uid ?? defaultWorkspaceId
+  return defaultWorkspaceId
 }
 
 function workspacePath() {
@@ -78,6 +79,13 @@ export async function deleteProjectRemote(projectId) {
     deleteCollection(runsPath(projectId)),
   ])
   await remove(projectsPath(), projectId)
+}
+
+export async function clearWorkspaceRemote() {
+  ensureFirebase()
+  const projectsSnapshot = await getDocs(collection(db, ...projectsPath()))
+  await Promise.all(projectsSnapshot.docs.map((projectDoc) => deleteProjectRemote(projectDoc.id)))
+  await deleteCollection(membersPath())
 }
 
 export const subscribeTeamMembers   = (onChange)             => subscribe(membersPath(), onChange, (a, b) =>

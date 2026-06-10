@@ -4,6 +4,7 @@ import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { isFirebaseEnabled } from '../utils/firebase'
 import {
+  clearWorkspaceRemote,
   saveBugRemote,
   saveProjectRemote,
   saveTeamMemberRemote,
@@ -30,8 +31,13 @@ function SummaryGrid({ summary }) {
   )
 }
 
-async function syncBackupToCloud(backup) {
+async function syncBackupToCloud(backup, mode) {
   const { projects, teamMembers, projectData } = backup.data
+
+  if (mode === 'replace') {
+    await clearWorkspaceRemote()
+  }
+
   for (const member of teamMembers) {
     await saveTeamMemberRemote(member)
   }
@@ -89,7 +95,7 @@ export function BackupPage() {
       if (syncToCloud) {
         setSyncing(true)
         try {
-          await syncBackupToCloud(parsed)
+          await syncBackupToCloud(parsed, mode)
           toast.success('Workspace restored and synced to cloud.')
         } catch (err) {
           toast.warning(`Restored locally, but cloud sync failed: ${err.message}`)
@@ -195,12 +201,12 @@ export function BackupPage() {
                   Clear file
                 </button>
                 <button
-                  className="primary-button"
+                  className={isFirebaseEnabled ? 'secondary-button' : 'primary-button'}
                   type="button"
                   disabled={syncing}
                   onClick={() => doRestore(false)}
                 >
-                  Restore locally
+                  {isFirebaseEnabled ? 'Restore this browser only' : 'Restore locally'}
                 </button>
                 {isFirebaseEnabled && (
                   <button

@@ -11,6 +11,7 @@ import { ChevronDownIcon } from './Icons'
 const globalNav = [
   { label: 'Dashboard', to: '/dashboard', icon: 'dashboard' },
   { label: 'Projects', to: '/projects', icon: 'projects' },
+  { label: 'Updates', to: '/updates', icon: 'updates' },
   { label: 'Reports', to: '/reports', icon: 'reports' },
   { label: 'Backup', to: '/backup', icon: 'backup' },
 ]
@@ -28,6 +29,7 @@ function Icon({ name }) {
   const paths = {
     dashboard: <><rect x="3" y="3" width="7" height="8" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="15" width="7" height="6" rx="1.5" /></>,
     projects: <><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h4" /></>,
+    updates: <><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" /><path d="M8 9h8" /><path d="M8 13h5" /></>,
     reports: <><path d="M4 19V5" /><path d="M20 19H4" /><path d="M8 15v-4" /><path d="M13 15V8" /><path d="M18 15v-6" /></>,
     backup: <><path d="M12 3v10" /><path d="m8 9 4 4 4-4" /><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" /></>,
     cases: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="m3 6 .8.8L5.5 5" /><path d="m3 12 .8.8 1.7-1.8" /><path d="m3 18 .8.8 1.7-1.8" /></>,

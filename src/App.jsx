@@ -21,6 +21,7 @@ import { TestCaseDetailPage } from './pages/TestCaseDetailPage'
 import { TestCasesPage } from './pages/TestCasesPage'
 import { TestRunDetailPage } from './pages/TestRunDetailPage'
 import { TestRunsPage } from './pages/TestRunsPage'
+import { UpdatesPage } from './pages/UpdatesPage'
 import './App.css'
 
 function NamePicker({ onDone }) {
@@ -66,6 +67,7 @@ const appRoutes = (
     <Route path="/" element={<Navigate to="/dashboard" replace />} />
     <Route path="/dashboard" element={<DashboardPage />} />
     <Route path="/projects" element={<ProjectsPage />} />
+    <Route path="/updates" element={<UpdatesPage />} />
     <Route path="/reports" element={<ReportsPage />} />
     <Route path="/backup" element={<BackupPage />} />
     <Route path="/projects/:projectId/test-cases" element={<TestCasesPage />} />
