@@ -39,16 +39,18 @@ async function syncBackupToCloud(backup, mode) {
     await clearWorkspaceRemote()
   }
 
-  for (const member of teamMembers) {
-    await saveTeamMemberRemote(member)
-  }
-  for (const project of projects) {
+  // Write all records in parallel — vastly faster than sequential awaits
+  await Promise.all(teamMembers.map((m) => saveTeamMemberRemote(m)))
+
+  await Promise.all(projects.map(async (project) => {
     await saveProjectRemote(project)
     const data = projectData[project.id] ?? {}
-    for (const tc of data.testCases ?? []) await saveTestCaseRemote(project.id, tc)
-    for (const bug of data.bugs ?? []) await saveBugRemote(project.id, bug)
-    for (const run of data.runs ?? []) await saveTestRunRemote(project.id, run)
-  }
+    await Promise.all([
+      ...(data.testCases ?? []).map((tc)  => saveTestCaseRemote(project.id, tc)),
+      ...(data.bugs      ?? []).map((bug) => saveBugRemote(project.id, bug)),
+      ...(data.runs      ?? []).map((run) => saveTestRunRemote(project.id, run)),
+    ])
+  }))
 }
 
 export function BackupPage() {
@@ -87,9 +89,10 @@ export function BackupPage() {
       toast.success('Workspace restored and synced to cloud.')
       setTimeout(() => window.location.reload(), 900)
     } catch (err) {
-      setSyncing(false)
       setSyncError(err.message ?? 'Unknown error')
       toast.error(`Cloud sync failed: ${err.message}`)
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -206,7 +209,9 @@ export function BackupPage() {
 
               {isFirebaseEnabled && !syncError && (
                 <p className="backup-sync-note">
-                  Firebase is active — restore updates both this browser and the cloud so Firestore subscriptions don't overwrite your data.
+                  {syncing
+                    ? 'Syncing to cloud — writing all records in parallel, this will complete shortly…'
+                    : 'Firebase is active — restore updates both this browser and the cloud so Firestore subscriptions don\'t overwrite your data.'}
                 </p>
               )}
               {syncError && (
