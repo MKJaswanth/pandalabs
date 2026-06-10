@@ -36,9 +36,18 @@ This document defines the structure of the data entities used in the QA Manager 
 | `status` | `string` | `Not Executed` \| `Pass` \| `Fail` \| `Skipped` \| `Blocker` |
 | `devRemarks` | `string` | Notes for developers |
 | `qaRemarks` | `string` | Internal QA notes |
+| `attachments` | `Attachment[]` | Array of file attachments (Base64 encoded, max 1MB per file) |
 | `createdAt` | `string` | ISO 8601 timestamp |
 | `updatedAt` | `string` | Last update timestamp |
 | `updatedBy` | `string` | Name of user who last updated |
+
+### Attachment
+*Stored within the `attachments` array of a Bug or Test Case.*
+* `id`: `string` (UUID)
+* `name`: `string` (Original filename)
+* `type`: `string` (MIME type)
+* `size`: `number` (File size in bytes)
+* `data`: `string` (Base64 encoded data)
 
 ---
 
@@ -53,6 +62,7 @@ This document defines the structure of the data entities used in the QA Manager 
 | `severity` | `string` | `Critical` \| `Major` \| `Minor` |
 | `status` | `string` | `Open` \| `In review` \| `Closed` |
 | `linkedTestCase` | `string` | Optional ID of the related Test Case |
+| `attachments` | `Attachment[]` | Array of file attachments (Base64 encoded, max 1MB per file) |
 | `history` | `object[]` | Array of activity logs |
 | `createdAt` | `string` | ISO 8601 timestamp |
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { AttachmentField } from '../components/AttachmentField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
@@ -55,6 +56,7 @@ export function TestCaseDetailPage() {
       assignee: tc.assignee || '', steps: steps.length ? [...steps] : [''],
       testData: tc.testData || '', expected: tc.expected || '', actual: tc.actual || '',
       status: tc.status, devRemarks: tc.devRemarks || '', qaRemarks: tc.qaRemarks || '',
+      attachments: tc.attachments || [],
     })
     setEditing(true)
   }
@@ -78,7 +80,7 @@ export function TestCaseDetailPage() {
   }
 
   const openLogBug = () => {
-    setBugForm({ title: '', description: '', severity: 'Major', status: 'Open', linkedTestCase: testCaseId })
+    setBugForm({ title: '', description: '', severity: 'Major', status: 'Open', linkedTestCase: testCaseId, attachments: [] })
     setShowLogBug(true)
   }
 
@@ -355,6 +357,13 @@ export function TestCaseDetailPage() {
               <label>Dev Remarks<input value={form.devRemarks} onChange={set('devRemarks')} placeholder="Notes from developer" /></label>
               <label>QA Remarks<input value={form.qaRemarks} onChange={set('qaRemarks')} placeholder="Notes from QA" /></label>
             </div>
+            <div>
+              <label>Attachments <span className="hint">(max 1MB per file)</span></label>
+              <AttachmentField
+                attachments={form.attachments || []}
+                onChange={(attachments) => setForm((f) => ({ ...f, attachments }))}
+              />
+            </div>
             <div className="modal-footer">
               <button type="button" className="secondary-button" onClick={() => setEditing(false)}>Cancel</button>
               <button type="submit" className="primary-button">Save changes</button>
@@ -388,6 +397,13 @@ export function TestCaseDetailPage() {
             <label>Linked test case
               <input value={tc.title} disabled className="input-disabled" />
             </label>
+            <div>
+              <label>Attachments <span className="hint">(max 1MB per file)</span></label>
+              <AttachmentField
+                attachments={bugForm.attachments || []}
+                onChange={(attachments) => setBugForm((f) => ({ ...f, attachments }))}
+              />
+            </div>
             <div className="modal-footer">
               <button type="button" className="secondary-button" onClick={() => setShowLogBug(false)}>Cancel</button>
               <button type="submit" className="primary-button">Log bug</button>

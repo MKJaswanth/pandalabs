@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { AttachmentField } from '../components/AttachmentField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { CheckIcon } from '../components/Icons'
@@ -321,6 +322,7 @@ export function TestRunsPage() {
       severity: currentResult?.status === 'Blocker' ? 'Critical' : 'Major',
       status: 'Open',
       linkedTestCase: currentCase.id,
+      attachments: [],
     })
   }
 
@@ -697,6 +699,13 @@ export function TestRunsPage() {
               Linked test case
               <input value={currentCase.title} disabled className="input-disabled" />
             </label>
+            <div>
+              <label>Attachments <span className="hint">(max 1MB per file)</span></label>
+              <AttachmentField
+                attachments={bugForm.attachments || []}
+                onChange={(attachments) => setBugForm((prev) => ({ ...prev, attachments }))}
+              />
+            </div>
             <div className="modal-footer">
               <button type="button" className="secondary-button" onClick={() => setBugForm(null)}>Cancel</button>
               <button type="submit" className="primary-button">Log bug</button>

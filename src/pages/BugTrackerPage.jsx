@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AttachmentField } from '../components/AttachmentField'
 import { XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
 import { Link, useParams } from 'react-router-dom'
 import { Modal } from '../components/Modal'
@@ -44,6 +45,7 @@ const blank = (prefillTcId = '') => ({
   priority: 'Medium', environment: '', build: '', assignedTo: '',
   reportedBy: '', reportedDate: today(),
   fixedInBuild: '', retestStatus: 'Not Retested', devRemarks: '', qaRemarks: '',
+  attachments: [],
 })
 
 const shortId = (id) => id.slice(0, 8).toUpperCase()
@@ -177,6 +179,14 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
         </label>
       </div>
 
+      <div>
+        <label>Attachments <span className="hint">(max 1MB per file)</span></label>
+        <AttachmentField
+          attachments={form.attachments || []}
+          onChange={(attachments) => setForm((c) => ({ ...c, attachments }))}
+        />
+      </div>
+
       {history.length > 0 && (
         <div className="bug-history">
           <h3>Activity log</h3>
@@ -249,6 +259,7 @@ export function BugTrackerPage() {
       retestStatus:     bug.retestStatus || 'Not Retested',
       devRemarks:       bug.devRemarks || '',
       qaRemarks:        bug.qaRemarks || '',
+      attachments:      bug.attachments || [],
     })
   }
 

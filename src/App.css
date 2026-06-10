@@ -1850,8 +1850,15 @@ tbody tr:hover {
 
 .restore-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  margin-top: 16px;
+}
+.restore-actions .primary-button,
+.restore-actions .secondary-button {
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 /* ── 16. MODALS & DIALOGS ──────────────────────────────────────────────── */
@@ -2319,7 +2326,6 @@ button { font-family: inherit; }
 .page-header p { color: var(--text-soft); font-size: 13px; }
 
 /* ── Backup summary & restore old classes ──────────────── */
-.restore-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
 /* ── 17. RESPONSIVE DESIGN Polish ──────────────────────────────────────── */
 @media (max-width: 820px) {
@@ -2802,6 +2808,139 @@ button { font-family: inherit; }
   border-radius: 4px;
 }
 .storage-banner-dismiss:hover { opacity: 1; background: rgba(0,0,0,0.06); }
+
+/* ── 24. ATTACHMENT FIELD ──────────────────────────────────────────────── */
+.attachment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.attachment-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.attachment-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.attachment-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-size {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.attachment-preview-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.attachment-preview-link:hover {
+  text-decoration: underline;
+}
+
+.attachment-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.attachment-remove:hover {
+  background: #fef0f0;
+  color: var(--danger);
+}
+
+.attachment-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px;
+  border: 2px dashed var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.attachment-dropzone:hover,
+.attachment-dropzone--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.attachment-dropzone-icon {
+  font-size: 20px;
+}
+
+.attachment-dropzone-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.attachment-dropzone-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.attachment-file-input {
+  display: none;
+}
+
+.attachment-error {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #fef0f0;
+  border: 1px solid #fecaca;
+  color: var(--danger);
+  font-size: 12px;
+}
 
 /* Keep app links from falling back to browser-blue underlined hypertext. */
 .content a:not(.primary-button):not(.secondary-button):not(.quick-action-card) {
