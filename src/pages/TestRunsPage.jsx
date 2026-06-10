@@ -32,18 +32,57 @@ function failingModules(cases = []) {
 
 function RunSummary({ summary }) {
   const rate = summary.total ? Math.round((summary.passed / summary.total) * 100) : 0
+  const pending = summary.pending ?? 0
+  const executed = summary.total - pending
+
+  const allStats = [
+    { label: 'Pass',               count: summary.passed,                 tone: 'passed' },
+    { label: 'Fail',               count: summary.failed,                 tone: 'failed' },
+    { label: 'Blocker',            count: summary.blocker,                tone: 'blocker' },
+    { label: 'Reported',           count: summary.reported ?? 0,          tone: 'reported' },
+    { label: 'In Progress',        count: summary.testingInProgress ?? 0, tone: 'inprogress' },
+    { label: 'Need Clarification', count: summary.needClarification ?? 0, tone: 'clarification' },
+    { label: 'Hold',               count: summary.hold ?? 0,              tone: 'hold' },
+    { label: 'Skipped',            count: summary.skipped,                tone: 'skipped' },
+    { label: 'Not Executed',       count: pending,                        tone: 'pending' },
+  ]
+
+  const alwaysShow = new Set(['passed', 'failed', 'blocker', 'pending'])
+  const visibleStats = allStats.filter((s) => s.count > 0 || alwaysShow.has(s.tone))
+
   return (
-    <div className="run-summary-grid">
-      <article className="run-summary-total"><span>Total</span><strong>{summary.total}</strong></article>
-      <article><span>Pass</span><strong className="metric-passed">{summary.passed}</strong></article>
-      <article><span>Fail</span><strong className="metric-failed">{summary.failed}</strong></article>
-      <article><span>Blocker</span><strong className="metric-failed">{summary.blocker}</strong></article>
-      <article><span>Skipped</span><strong>{summary.skipped}</strong></article>
-      <article className="run-summary-rate">
-        <span>Pass rate</span>
-        <strong>{rate}%</strong>
-        <div className="progress-track"><span style={{ width: `${rate}%` }} /></div>
-      </article>
+    <div className="run-summary">
+      <div className="run-summary-hero">
+        <span className="run-summary-rate-num">{rate}<span className="run-summary-rate-pct">%</span></span>
+        <div className="run-summary-meta">
+          <strong>pass rate</strong>
+          <span>{executed} / {summary.total} executed</span>
+        </div>
+      </div>
+
+      <div className="run-stacked-bar">
+        {summary.total === 0
+          ? <span className="run-stacked-seg run-stacked-seg--pending" style={{ flex: 1 }} />
+          : allStats.filter((s) => s.count > 0).map((s) => (
+            <span
+              key={s.tone}
+              className={`run-stacked-seg run-stacked-seg--${s.tone}`}
+              style={{ flex: s.count }}
+              title={`${s.label}: ${s.count}`}
+            />
+          ))
+        }
+      </div>
+
+      <div className="run-stat-rows">
+        {visibleStats.map(({ label, count, tone }) => (
+          <div key={label} className="run-stat-row">
+            <span className={`run-stat-dot run-stat-dot--${tone}`} />
+            <span className="run-stat-label">{label}</span>
+            <span className={`run-stat-count${count > 0 ? ` status-text--${tone}` : ''}`}>{count}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -98,6 +137,34 @@ export function TestRunsPage() {
   }).length
   const progressPercent = selectedCases.length ? Math.round((completedCount / selectedCases.length) * 100) : 0
   const moduleRisks = failingModules(resultItems)
+
+  // Elapsed time ticker — updates every 30 s while executing
+  const [elapsed, setElapsed] = useState('')
+  useEffect(() => {
+    if (mode !== 'execute' || !startedAt) return
+    const fmt = () => {
+      const mins = Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000)
+      if (mins < 1) setElapsed('just started')
+      else if (mins < 60) setElapsed(`${mins}m`)
+      else { const h = Math.floor(mins / 60); const m = mins % 60; setElapsed(m ? `${h}h ${m}m` : `${h}h`) }
+    }
+    fmt()
+    const id = setInterval(fmt, 30000)
+    return () => clearInterval(id)
+  }, [mode, startedAt])
+
+  const jumpToNextPending = () => {
+    // Search forward from current position first, then wrap around
+    const after = selectedCases.findIndex((tc, idx) => {
+      if (idx <= currentIndex) return false
+      return (results[tc.id]?.status ?? tc.status ?? 'Not Executed') === 'Not Executed'
+    })
+    if (after !== -1) { setCurrentIndex(after); return }
+    const from0 = selectedCases.findIndex((tc) =>
+      (results[tc.id]?.status ?? tc.status ?? 'Not Executed') === 'Not Executed',
+    )
+    if (from0 !== -1) setCurrentIndex(from0)
+  }
 
   const toggleCase = (id) => {
     setSelectedIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id])
@@ -349,6 +416,11 @@ export function TestRunsPage() {
       if (event.key === 'p' || event.key === 'P') setShortcutStatus('Pass')
       if (event.key === 'f' || event.key === 'F') setShortcutStatus('Fail')
       if (event.key === 'b' || event.key === 'B') setShortcutStatus('Blocker')
+      if (event.key === 's' || event.key === 'S') setShortcutStatus('Skipped')
+      if (event.key === 'r' || event.key === 'R') setShortcutStatus('Reported')
+      if (event.key === 'h' || event.key === 'H') setShortcutStatus('Hold')
+      if (event.key === 'i' || event.key === 'I') setShortcutStatus('Testing in Progress')
+      if (event.key === 'n' || event.key === 'N') setShortcutStatus('Need Clarification')
       if (event.key === 'ArrowRight') setCurrentIndex((index) => Math.min(selectedCases.length - 1, index + 1))
       if (event.key === 'ArrowLeft') setCurrentIndex((index) => Math.max(0, index - 1))
     }
@@ -522,7 +594,12 @@ export function TestRunsPage() {
               <span>P Pass</span>
               <span>F Fail</span>
               <span>B Blocker</span>
-              <span>← → navigate cases</span>
+              <span>S Skip</span>
+              <span>R Reported</span>
+              <span>H Hold</span>
+              <span>I In Progress</span>
+              <span>N Need Clarification</span>
+              <span>← → navigate</span>
             </div>
 
             <div className="run-nav-actions">
@@ -542,10 +619,21 @@ export function TestRunsPage() {
           </section>
 
           <aside className="panel run-side-panel">
-            <h2>Live summary</h2>
+            <div className="run-side-header">
+              <h2>Live summary</h2>
+              <button className="run-jump-btn" type="button" onClick={jumpToNextPending} title="Jump to next unexecuted case">
+                Next pending ↓
+              </button>
+            </div>
+            {elapsed && (
+              <div className="run-elapsed">
+                <span>Elapsed</span>
+                <strong>{elapsed}</strong>
+              </div>
+            )}
             <RunSummary summary={liveSummary} />
             <div className="run-side-section">
-              <h3>Failure modules</h3>
+              <h3>At-risk modules</h3>
               {moduleRisks.length ? (
                 moduleRisks.slice(0, 4).map((item) => (
                   <div className="run-module-risk" key={item.module}>
@@ -554,24 +642,27 @@ export function TestRunsPage() {
                   </div>
                 ))
               ) : (
-                <p className="muted-text">No failed modules yet.</p>
+                <p className="muted-text">No failures yet.</p>
               )}
             </div>
-            <div className="run-case-list">
-              {selectedCases.map((tc, index) => {
-                const status = results[tc.id]?.status ?? tc.status ?? 'Not Executed'
-                return (
-                  <button
-                    key={tc.id}
-                    type="button"
-                    className={index === currentIndex ? 'active' : ''}
-                    onClick={() => setCurrentIndex(index)}
-                  >
-                    <span>{index + 1}. {tc.title}</span>
-                    <strong className={`status-text--${STATUS_TONE[status] ?? 'pending'}`}>{status}</strong>
-                  </button>
-                )
-              })}
+            <div className="run-side-section">
+              <h3>Cases</h3>
+              <div className="run-case-list">
+                {selectedCases.map((tc, index) => {
+                  const status = results[tc.id]?.status ?? tc.status ?? 'Not Executed'
+                  return (
+                    <button
+                      key={tc.id}
+                      type="button"
+                      className={index === currentIndex ? 'active' : ''}
+                      onClick={() => setCurrentIndex(index)}
+                    >
+                      <span>{index + 1}. {tc.title}</span>
+                      <strong className={`status-text--${STATUS_TONE[status] ?? 'pending'}`}>{status}</strong>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </aside>
         </div>
