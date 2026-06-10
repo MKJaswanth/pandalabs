@@ -35,9 +35,16 @@ function byCreatedAtDesc(a, b) {
   return String(b.createdAt ?? b.date ?? '').localeCompare(String(a.createdAt ?? a.date ?? ''))
 }
 
+// Set to true during backup restore to prevent Firestore snapshots from
+// overwriting localStorage while we're writing new data. Resets on page reload.
+let subscriptionsSuppressed = false
+export function suppressSubscriptions() { subscriptionsSuppressed = true }
+export function allowSubscriptions()    { subscriptionsSuppressed = false }
+
 function subscribe(pathParts, onChange, sortFn = byCreatedAtDesc) {
   ensureFirebase()
   return onSnapshot(collection(db, ...pathParts), (snapshot) => {
+    if (subscriptionsSuppressed) return
     const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
     onChange(sortFn ? rows.sort(sortFn) : rows)
   })

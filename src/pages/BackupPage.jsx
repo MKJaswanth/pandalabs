@@ -10,6 +10,7 @@ import {
   saveTeamMemberRemote,
   saveTestCaseRemote,
   saveTestRunRemote,
+  suppressSubscriptions,
 } from '../utils/remoteStorage'
 import {
   createWorkspaceBackup,
@@ -58,6 +59,7 @@ export function BackupPage() {
   const [error, setError] = useState('')
   const [mode, setMode] = useState('merge')
   const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState('')
   const currentSummary = summarizeBackup(createWorkspaceBackup())
   const importSummary = parsed ? summarizeBackup(parsed) : null
 
@@ -77,6 +79,20 @@ export function BackupPage() {
     reader.readAsText(file)
   }
 
+  const runCloudSync = async () => {
+    setSyncing(true)
+    setSyncError('')
+    try {
+      await syncBackupToCloud(parsed, mode)
+      toast.success('Workspace restored and synced to cloud.')
+      setTimeout(() => window.location.reload(), 900)
+    } catch (err) {
+      setSyncing(false)
+      setSyncError(err.message ?? 'Unknown error')
+      toast.error(`Cloud sync failed: ${err.message}`)
+    }
+  }
+
   const doRestore = async () => {
     if (!parsed) return
     if (mode === 'replace') {
@@ -90,26 +106,20 @@ export function BackupPage() {
     }
 
     try {
+      // Block Firestore snapshots from overwriting localStorage while we restore.
+      // This flag resets on page reload, so subscriptions work normally afterward.
+      if (isFirebaseEnabled) suppressSubscriptions()
+
       restoreWorkspaceBackup(parsed, mode)
 
-      // When Firebase is enabled a local-only restore is immediately undone by
-      // Firestore subscriptions, so we always sync to cloud in that case.
       if (isFirebaseEnabled) {
-        setSyncing(true)
-        try {
-          await syncBackupToCloud(parsed, mode)
-          toast.success('Workspace restored and synced to cloud.')
-        } catch (err) {
-          toast.warning(`Restored locally, but cloud sync failed: ${err.message}`)
-        } finally {
-          setSyncing(false)
-        }
+        // Cloud sync must succeed before we reload — if we reload with Firestore
+        // still holding stale data, subscriptions will wipe the restored localStorage.
+        await runCloudSync()
       } else {
         toast.success(mode === 'replace' ? 'Workspace restored from backup.' : 'Backup merged into workspace.')
+        setTimeout(() => window.location.reload(), 900)
       }
-
-      // Reload so all hooks re-initialise from updated localStorage
-      setTimeout(() => window.location.reload(), 900)
     } catch (err) {
       toast.error(`Restore failed: ${err.message}`)
     }
@@ -194,27 +204,46 @@ export function BackupPage() {
                 </label>
               </div>
 
-              {isFirebaseEnabled && (
+              {isFirebaseEnabled && !syncError && (
                 <p className="backup-sync-note">
-                  Firebase is active — restoring will update both this browser and the cloud workspace so your data isn't overwritten by the sync.
+                  Firebase is active — restore updates both this browser and the cloud so Firestore subscriptions don't overwrite your data.
                 </p>
               )}
+              {syncError && (
+                <div className="backup-alert backup-alert--danger">
+                  <strong>Cloud sync failed:</strong> {syncError}
+                  <br />Your data is restored in this browser but <strong>do not refresh</strong> until you retry the sync — a page reload will overwrite it with the old Firestore data.
+                </div>
+              )}
               <div className="restore-actions">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => { setParsed(null); setError('') }}
-                >
-                  Clear file
-                </button>
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={syncing}
-                  onClick={doRestore}
-                >
-                  {syncing ? 'Restoring…' : isFirebaseEnabled ? 'Restore workspace' : 'Restore locally'}
-                </button>
+                {!syncError && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => { setParsed(null); setError(''); setSyncError('') }}
+                  >
+                    Clear file
+                  </button>
+                )}
+                {syncError ? (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={syncing}
+                    onClick={runCloudSync}
+                  >
+                    {syncing ? 'Retrying…' : 'Retry cloud sync'}
+                  </button>
+                ) : (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={syncing}
+                    onClick={doRestore}
+                  >
+                    {syncing ? 'Restoring…' : isFirebaseEnabled ? 'Restore workspace' : 'Restore locally'}
+                  </button>
+                )}
               </div>
             </div>
           )}
