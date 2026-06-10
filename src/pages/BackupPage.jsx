@@ -77,7 +77,7 @@ export function BackupPage() {
     reader.readAsText(file)
   }
 
-  const doRestore = async (syncToCloud) => {
+  const doRestore = async () => {
     if (!parsed) return
     if (mode === 'replace') {
       const ok = await confirm({
@@ -92,7 +92,9 @@ export function BackupPage() {
     try {
       restoreWorkspaceBackup(parsed, mode)
 
-      if (syncToCloud) {
+      // When Firebase is enabled a local-only restore is immediately undone by
+      // Firestore subscriptions, so we always sync to cloud in that case.
+      if (isFirebaseEnabled) {
         setSyncing(true)
         try {
           await syncBackupToCloud(parsed, mode)
@@ -192,6 +194,11 @@ export function BackupPage() {
                 </label>
               </div>
 
+              {isFirebaseEnabled && (
+                <p className="backup-sync-note">
+                  Firebase is active — restoring will update both this browser and the cloud workspace so your data isn't overwritten by the sync.
+                </p>
+              )}
               <div className="restore-actions">
                 <button
                   className="secondary-button"
@@ -201,23 +208,13 @@ export function BackupPage() {
                   Clear file
                 </button>
                 <button
-                  className={isFirebaseEnabled ? 'secondary-button' : 'primary-button'}
+                  className="primary-button"
                   type="button"
                   disabled={syncing}
-                  onClick={() => doRestore(false)}
+                  onClick={doRestore}
                 >
-                  {isFirebaseEnabled ? 'Restore this browser only' : 'Restore locally'}
+                  {syncing ? 'Restoring…' : isFirebaseEnabled ? 'Restore workspace' : 'Restore locally'}
                 </button>
-                {isFirebaseEnabled && (
-                  <button
-                    className="primary-button"
-                    type="button"
-                    disabled={syncing}
-                    onClick={() => doRestore(true)}
-                  >
-                    {syncing ? 'Syncing…' : 'Restore & sync to cloud'}
-                  </button>
-                )}
               </div>
             </div>
           )}

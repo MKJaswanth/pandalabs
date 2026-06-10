@@ -1734,6 +1734,17 @@ tbody tr:hover {
   margin: 12px 0 0;
 }
 
+.backup-sync-note {
+  margin: 10px 0 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .backup-dropzone {
   display: flex;
   flex-direction: column;
