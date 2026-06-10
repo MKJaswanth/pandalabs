@@ -93,7 +93,7 @@ export function DashboardPage() {
           </div>
           <h2>No projects yet</h2>
           <p>Create a project to start tracking test cases, bugs, and pass rates.</p>
-          <Link to="/projects" className="primary-button" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', height: 36, padding: '0 16px' }}>
+          <Link to="/projects" className="primary-button" style={{ textDecoration: 'none' }}>
             + Create first project
           </Link>
         </section>

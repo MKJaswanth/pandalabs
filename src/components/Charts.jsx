@@ -41,3 +41,39 @@ export function Bar({ label, value, total, tone }) {
     </div>
   )
 }
+
+// SVG polyline sparkline for run pass-rate trend
+export function RunTrend({ runs }) {
+  if (!runs || runs.length < 2) return null
+  const rates = runs.map((r) => (r.total ? Math.round((r.passed / r.total) * 100) : 0))
+  const W = 180, H = 52, pad = 6
+  const xStep = runs.length > 1 ? (W - pad * 2) / (runs.length - 1) : 0
+  const yScale = (v) => pad + (H - pad * 2) * (1 - v / 100)
+  const pts = rates.map((v, i) => [pad + i * xStep, yScale(v)])
+  const polyline = pts.map(([x, y]) => `${x},${y}`).join(' ')
+  const latest = rates[rates.length - 1]
+  const prev = rates[rates.length - 2]
+  const delta = latest - prev
+  const color = latest >= 70 ? 'var(--success)' : latest >= 50 ? 'var(--warning)' : 'var(--danger)'
+  const deltaColor = delta > 0 ? 'var(--success)' : delta < 0 ? 'var(--danger)' : 'var(--text-muted)'
+
+  return (
+    <div className="run-trend-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="run-trend-svg" aria-hidden>
+        <polyline points={polyline} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={i === pts.length - 1 ? 4 : 2.5} fill={color} />
+        ))}
+      </svg>
+      <div className="run-trend-meta">
+        <span className="run-trend-latest" style={{ color }}>{latest}%</span>
+        {delta !== 0 && (
+          <span className="run-trend-delta" style={{ color: deltaColor }}>
+            {delta > 0 ? '↑' : '↓'}{Math.abs(delta)}%
+          </span>
+        )}
+        <span className="run-trend-label">{runs.length} runs</span>
+      </div>
+    </div>
+  )
+}

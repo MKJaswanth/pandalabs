@@ -227,6 +227,8 @@ export function BugTrackerPage() {
   const [search, setSearch] = useState('')
   const [fSeverity, setFSeverity] = useState('')
   const [fStatus, setFStatus] = useState('')
+  const [fModule, setFModule] = useState('')
+  const [fAssignee, setFAssignee] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const { sorted: sortedBugs, sortKey: bugSortKey, sortDir: bugSortDir, toggle: bugToggle } = useSortable(bugs)
@@ -316,10 +318,15 @@ export function BugTrackerPage() {
 
   const tcTitle = (id) => testCases.find((tc) => tc.id === id)?.title
 
+  const bugModules = [...new Set(bugs.map((b) => b.module).filter(Boolean))]
+  const bugAssignees = [...new Set(bugs.map((b) => b.assignedTo).filter(Boolean))]
+
   const visible = sortedBugs.filter((b) => {
-    if (search && !b.title.toLowerCase().includes(search.toLowerCase())) return false
+    if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.description?.toLowerCase().includes(search.toLowerCase())) return false
     if (fSeverity && b.severity !== fSeverity) return false
     if (fStatus && b.status !== fStatus) return false
+    if (fModule && b.module !== fModule) return false
+    if (fAssignee && b.assignedTo !== fAssignee) return false
     return true
   })
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize))
@@ -330,6 +337,8 @@ export function BugTrackerPage() {
   const rangeEnd = Math.min(startIndex + pageSize, visible.length)
 
   const updateListControl = (setter) => (e) => { setter(e.target.value); setPage(1) }
+  const clearFilters = () => { setSearch(''); setFSeverity(''); setFStatus(''); setFModule(''); setFAssignee(''); setPage(1) }
+  const activeFilterCount = [search, fSeverity, fStatus, fModule, fAssignee].filter(Boolean).length
 
   return (
     <>
@@ -358,14 +367,34 @@ export function BugTrackerPage() {
             value={search}
             onChange={updateListControl(setSearch)}
           />
-          <select aria-label="Severity filter" value={fSeverity} onChange={updateListControl(setFSeverity)}>
+          <select aria-label="Severity filter" value={fSeverity} onChange={updateListControl(setFSeverity)} className={fSeverity ? 'filter-active' : ''}>
             <option value="">Severity</option>
             {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
           </select>
-          <select aria-label="Status filter" value={fStatus} onChange={updateListControl(setFStatus)}>
+          <select aria-label="Status filter" value={fStatus} onChange={updateListControl(setFStatus)} className={fStatus ? 'filter-active' : ''}>
             <option value="">Status</option>
             {STATUSES.map((s) => <option key={s}>{s}</option>)}
           </select>
+          {bugModules.length > 0 && (
+            <select aria-label="Module filter" value={fModule} onChange={updateListControl(setFModule)} className={fModule ? 'filter-active' : ''}>
+              <option value="">Module</option>
+              {bugModules.map((m) => <option key={m}>{m}</option>)}
+            </select>
+          )}
+          {bugAssignees.length > 0 && (
+            <select aria-label="Assignee filter" value={fAssignee} onChange={updateListControl(setFAssignee)} className={fAssignee ? 'filter-active' : ''}>
+              <option value="">Assignee</option>
+              {bugAssignees.map((a) => <option key={a}>{a}</option>)}
+            </select>
+          )}
+          <div className="toolbar-info">
+            {activeFilterCount > 0 && (
+              <button className="filter-clear-btn" type="button" onClick={clearFilters}>
+                Clear ({activeFilterCount})
+              </button>
+            )}
+            <span>{visible.length} of {sortedBugs.length}</span>
+          </div>
         </div>
 
         {visible.length === 0 ? (

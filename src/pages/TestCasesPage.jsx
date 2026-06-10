@@ -69,6 +69,8 @@ export function TestCasesPage() {
     setter(e.target.value)
     setPage(1)
   }
+  const clearFilters = () => { setSearch(''); setFPriority(''); setFStatus(''); setFModule(''); setFAssignee(''); setPage(1) }
+  const activeFilterCount = [search, fPriority, fStatus, fModule, fAssignee].filter(Boolean).length
 
   const handleAdd = (e) => {
     e.preventDefault()
@@ -188,22 +190,30 @@ export function TestCasesPage() {
             value={search}
             onChange={updateListControl(setSearch)}
           />
-          <select aria-label="Module filter" value={fModule} onChange={updateListControl(setFModule)}>
+          <select aria-label="Module filter" value={fModule} onChange={updateListControl(setFModule)} className={fModule ? 'filter-active' : ''}>
             <option value="">Module</option>
             {modules.map((m) => <option key={m}>{m}</option>)}
           </select>
-          <select aria-label="Priority filter" value={fPriority} onChange={updateListControl(setFPriority)}>
+          <select aria-label="Priority filter" value={fPriority} onChange={updateListControl(setFPriority)} className={fPriority ? 'filter-active' : ''}>
             <option value="">Priority</option>
             {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
           </select>
-          <select aria-label="Status filter" value={fStatus} onChange={updateListControl(setFStatus)}>
+          <select aria-label="Status filter" value={fStatus} onChange={updateListControl(setFStatus)} className={fStatus ? 'filter-active' : ''}>
             <option value="">Status</option>
             {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
           </select>
-          <select aria-label="Assignee filter" value={fAssignee} onChange={updateListControl(setFAssignee)}>
+          <select aria-label="Assignee filter" value={fAssignee} onChange={updateListControl(setFAssignee)} className={fAssignee ? 'filter-active' : ''}>
             <option value="">Assignee</option>
             {assignees.map((a) => <option key={a}>{a}</option>)}
           </select>
+          <div className="toolbar-info">
+            {activeFilterCount > 0 && (
+              <button className="filter-clear-btn" type="button" onClick={clearFilters}>
+                Clear ({activeFilterCount})
+              </button>
+            )}
+            <span>{visible.length} of {sortedCases.length}</span>
+          </div>
         </div>
 
         {visible.length === 0 ? (
@@ -267,7 +277,7 @@ export function TestCasesPage() {
                     </td>
                     <td>
                       <select
-                        className={`status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
+                        className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
                         value={tc.status}
                         aria-label="Status"
                         onChange={(e) => updateTestCase(withHistory(

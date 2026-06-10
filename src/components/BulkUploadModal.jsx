@@ -325,8 +325,15 @@ export function BulkUploadModal({ existingTestCases = [], onImport, onUpdate, on
 
   const handleImport = () => {
     const now = new Date().toISOString()
-
-    createRows.forEach((r) => onImport(rowToTestCase(r.data)))
+    // Stagger createdAt by 1ms per row so TC_001 (i=0) is the oldest timestamp.
+    // subscribeTestCases sorts ascending (oldest first), so the spreadsheet row
+    // order is preserved in the list: TC_001 at top, TC_311 at bottom.
+    const baseTime = Date.now()
+    createRows.forEach((r, i) => {
+      const tc = rowToTestCase(r.data)
+      tc.createdAt = new Date(baseTime + i).toISOString()
+      onImport(tc)
+    })
     updateRows.forEach((r) => {
       const incoming = rowToTestCase(r.data)
       const existing = r.duplicate.testCase

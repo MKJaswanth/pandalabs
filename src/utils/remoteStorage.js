@@ -35,6 +35,10 @@ function byCreatedAtDesc(a, b) {
   return String(b.createdAt ?? b.date ?? '').localeCompare(String(a.createdAt ?? a.date ?? ''))
 }
 
+function byCreatedAtAsc(a, b) {
+  return String(a.createdAt ?? a.date ?? '').localeCompare(String(b.createdAt ?? b.date ?? ''))
+}
+
 // Set to true during backup restore to prevent Firestore snapshots from
 // overwriting localStorage while we're writing new data. Resets on page reload.
 let subscriptionsSuppressed = false
@@ -101,7 +105,7 @@ export const subscribeTeamMembers   = (onChange)             => subscribe(member
 export const saveTeamMemberRemote   = (member)               => upsert(membersPath(), member)
 export const deleteTeamMemberRemote = (memberId)             => remove(membersPath(), memberId)
 
-export const subscribeTestCases     = (projectId, onChange)  => subscribe(testCasesPath(projectId), onChange)
+export const subscribeTestCases     = (projectId, onChange)  => subscribe(testCasesPath(projectId), onChange, byCreatedAtAsc)
 export const saveTestCaseRemote     = (projectId, testCase)  => upsert(testCasesPath(projectId), testCase)
 export const deleteTestCaseRemote   = (projectId, testCaseId) => remove(testCasesPath(projectId), testCaseId)
 

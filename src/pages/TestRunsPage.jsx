@@ -515,7 +515,19 @@ export function TestRunsPage() {
                       <td>{tc.title}</td>
                       <td>{tc.module || '-'}</td>
                       <td>{tc.priority}</td>
-                      <td><span className={`status-pill status-pill--${STATUS_TONE[tc.status] ?? 'pending'}`}>{tc.status}</span></td>
+                      <td>
+                        <select
+                          className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'pending'}`}
+                          value={tc.status}
+                          aria-label={`Status for ${tc.title}`}
+                          onChange={(e) => updateTestCase(withHistory(
+                            { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                            historyEntry('status', user, `Status changed to ${e.target.value}`, tc.status, e.target.value),
+                          ))}
+                        >
+                          {TEST_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -738,7 +750,7 @@ export function TestRunsPage() {
             >
               Rerun failed only
             </button>
-            <Link to={`/projects/${projectId}/test-runs/${savedRun.id}`} className="primary-button" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+            <Link to={`/projects/${projectId}/test-runs/${savedRun.id}`} className="primary-button" style={{ textDecoration: 'none' }}>
               View run details
             </Link>
           </div>
