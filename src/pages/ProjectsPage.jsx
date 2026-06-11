@@ -99,9 +99,10 @@ export function ProjectsPage() {
                     onClick={async () => {
                       const ok = await confirm({
                         title: 'Delete project?',
-                        message: `"${project.name}" and all its test cases, bugs, and runs will be permanently removed.`,
+                        message: `All test cases, bugs, and runs in "${project.name}" will be permanently deleted and cannot be recovered.`,
                         confirmLabel: 'Delete project',
                         danger: true,
+                        requireText: project.name,
                       })
                       if (ok) removeProject(project.id)
                     }}

@@ -61,9 +61,10 @@ export function SettingsPage() {
   const handleDelete = async () => {
     const ok = await confirm({
       title: 'Delete project?',
-      message: `Permanently delete "${project.name}"? All test cases, bugs, and runs will be removed and cannot be recovered.`,
+      message: `All test cases, bugs, and runs in "${project.name}" will be permanently deleted and cannot be recovered.`,
       confirmLabel: 'Delete project',
       danger: true,
+      requireText: project.name,
     })
     if (ok) {
       removeProject(project.id)

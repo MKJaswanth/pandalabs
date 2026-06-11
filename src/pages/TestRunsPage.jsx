@@ -117,9 +117,21 @@ export function TestRunsPage() {
   const [loggedBugIds, setLoggedBugIds] = useState([])
   const [startedAt, setStartedAt] = useState(null)
 
+  const sortedTestCases = useMemo(
+    () => [...testCases].sort((a, b) => {
+      const aKey = a.sourceTcId || ''
+      const bKey = b.sourceTcId || ''
+      if (aKey && bKey) return aKey.localeCompare(bKey, undefined, { numeric: true })
+      if (aKey) return -1
+      if (bKey) return 1
+      return new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
+    }),
+    [testCases],
+  )
+
   const selectedCases = useMemo(
-    () => testCases.filter((tc) => selectedIds.includes(tc.id)),
-    [selectedIds, testCases],
+    () => sortedTestCases.filter((tc) => selectedIds.includes(tc.id)),
+    [selectedIds, sortedTestCases],
   )
   const currentCase = selectedCases[currentIndex]
   const currentResult = currentCase
@@ -232,10 +244,17 @@ export function TestRunsPage() {
 
   const updateCurrent = (patch) => {
     if (!currentCase) return
-    setResults((prev) => ({
-      ...prev,
-      [currentCase.id]: { ...currentResult, ...patch },
-    }))
+    const newResult = { ...currentResult, ...patch }
+    setResults((prev) => ({ ...prev, [currentCase.id]: newResult }))
+    // Persist status immediately so changes survive without clicking Finish Run
+    if ('status' in patch && patch.status !== currentCase.status) {
+      updateTestCase({
+        ...currentCase,
+        status: newResult.status,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user,
+      })
+    }
   }
 
   const finishRun = () => {
@@ -414,6 +433,14 @@ export function TestRunsPage() {
             status,
           },
         }))
+        if (status !== currentCase.status) {
+          updateTestCase({
+            ...currentCase,
+            status,
+            updatedAt: new Date().toISOString(),
+            updatedBy: user,
+          })
+        }
       }
       if (event.key === 'p' || event.key === 'P') setShortcutStatus('Pass')
       if (event.key === 'f' || event.key === 'F') setShortcutStatus('Fail')
@@ -428,7 +455,7 @@ export function TestRunsPage() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [bugForm, currentCase, mode, selectedCases.length])
+  }, [bugForm, currentCase, mode, selectedCases.length, updateTestCase, user])
 
   // Derive a human-readable draft age string for the banner
   const draftAge = draft?.startedAt
@@ -500,7 +527,7 @@ export function TestRunsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {testCases.map((tc) => (
+                  {sortedTestCases.map((tc) => (
                     <tr key={tc.id}>
                       <td>
                         <input

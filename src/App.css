@@ -2891,6 +2891,21 @@ button { font-family: inherit; }
   font-size: 13.5px;
   line-height: 1.55;
 }
+.confirm-type-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 20px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.confirm-type-label strong {
+  color: var(--text-strong);
+  font-family: monospace;
+}
+.confirm-type-input {
+  margin-top: 2px;
+}
 
 /* ── 20. ERROR BOUNDARY ─────────────────────────────────────────────────── */
 .error-boundary {
