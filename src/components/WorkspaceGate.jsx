@@ -1,7 +1,7 @@
 import { useWorkspaceSync } from '../context/useWorkspaceSync'
 
 // Gates the signed-in app on the authoritative workspace load:
-//   syncing  → full-screen "Syncing workspace…"
+//   syncing  → professional app loading screen
 //   error    → reachability error with retry
 //   conflict → blocking recovery dialog (cloud empty + local data)
 //   else     → render the app
@@ -11,9 +11,18 @@ export function WorkspaceGate({ children }) {
   if (status === 'syncing') {
     return (
       <div className="app-loading">
-        <div className="app-loading-stack">
-          <div className="app-loading-spinner" aria-label="Syncing workspace" />
-          <p className="app-loading-text">Syncing workspace…</p>
+        <div className="app-loading-card" role="status" aria-live="polite">
+          <span className="app-loading-mark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 11 2 2 4-4" />
+            </svg>
+          </span>
+          <div className="app-loading-spinner" aria-label="Loading" />
+          <div>
+            <strong>QA Lab</strong>
+            <p className="app-loading-text">Preparing your workspace</p>
+          </div>
         </div>
       </div>
     )
@@ -22,8 +31,18 @@ export function WorkspaceGate({ children }) {
   if (status === 'error') {
     return (
       <div className="app-loading">
-        <div className="app-loading-stack">
-          <p className="app-loading-text">Couldn’t reach the cloud workspace.</p>
+        <div className="app-loading-card">
+          <span className="app-loading-mark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="M12 8v5" />
+              <path d="M12 17h.01" />
+            </svg>
+          </span>
+          <div>
+            <strong>QA Lab</strong>
+            <p className="app-loading-text">Couldn’t reach the cloud workspace.</p>
+          </div>
           <button className="primary-button" type="button" onClick={retry}>Retry</button>
         </div>
       </div>

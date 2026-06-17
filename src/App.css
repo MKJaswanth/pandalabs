@@ -2783,18 +2783,21 @@ button { font-family: inherit; }
   line-height: 1.4;
 }
 
-/* App loading spinner */
+/* App loading */
 .app-loading {
   min-height: 100svh;
   display: grid;
   place-items: center;
-  background: var(--page-bg);
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.08), transparent 34%),
+    var(--page-bg);
 }
 
 .app-loading-spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--border);
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(15, 23, 42, 0.1);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -2802,17 +2805,41 @@ button { font-family: inherit; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.app-loading-stack {
+.app-loading-card {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+  min-width: min(100%, 340px);
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.app-loading-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--accent);
+  color: white;
+}
+
+.app-loading-card strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 1rem;
+  line-height: 1.35;
 }
 
 .app-loading-text {
   margin: 0;
   color: var(--text-muted, #64748b);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 /* Stack the conflict-recovery actions vertically, full width */
@@ -2823,32 +2850,6 @@ button { font-family: inherit; }
 .modal-footer--stacked > button {
   width: 100%;
 }
-
-/* Sync status badge */
-.sync-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border: 1px solid var(--border);
-  background: var(--page-bg);
-  color: var(--text-muted, #64748b);
-  white-space: nowrap;
-}
-.sync-badge-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.sync-badge--synced  { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
-.sync-badge--syncing { color: #b45309; border-color: #fde68a; background: #fffbeb; }
-.sync-badge--syncing .sync-badge-dot { animation: spin 0.7s linear infinite; }
-.sync-badge--error   { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
-.sync-badge--offline { color: #64748b; border-color: var(--border); background: var(--page-bg); }
 
 .topbar-actions {
   display: flex;

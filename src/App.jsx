@@ -98,7 +98,19 @@ function AppShell() {
   if (isFirebaseEnabled && loading) {
     return (
       <div className="app-loading">
-        <div className="app-loading-spinner" aria-label="Loading" />
+        <div className="app-loading-card" role="status" aria-live="polite">
+          <span className="app-loading-mark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 11 2 2 4-4" />
+            </svg>
+          </span>
+          <div className="app-loading-spinner" aria-label="Loading" />
+          <div>
+            <strong>QA Lab</strong>
+            <p className="app-loading-text">Preparing your workspace</p>
+          </div>
+        </div>
       </div>
     )
   }
