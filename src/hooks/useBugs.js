@@ -1,41 +1,43 @@
 import { useCallback, useEffect, useState } from 'react'
 import { newId } from '../utils/id'
-import { deleteBug, getBugs, saveBug, setBugs as setBugsCache } from '../utils/storage'
-import { isFirebaseEnabled } from '../utils/firebase'
+import { deleteBug, getBugs, getBugsRaw, isDeleted, mergeById, saveBug, setBugs as setBugsCache } from '../utils/storage'
 import { deleteBugRemote, saveBugRemote, subscribeBugs } from '../utils/remoteStorage'
+import { useRemoteSync } from './useRemoteSync'
 
 export function useBugs(projectId) {
   const [bugs, setBugs] = useState(() => getBugs(projectId))
+  const remoteReady = useRemoteSync()
 
   const refresh = useCallback(() => setBugs(getBugs(projectId)), [projectId])
 
   useEffect(() => {
-    if (!isFirebaseEnabled || !projectId) return undefined
+    if (!remoteReady || !projectId) return undefined
     return subscribeBugs(projectId, (nextBugs) => {
-      setBugsCache(projectId, nextBugs)
-      setBugs(nextBugs)
+      const merged = mergeById(getBugsRaw(projectId), nextBugs)
+      setBugsCache(projectId, merged)
+      setBugs(merged.filter((bug) => !isDeleted(bug)))
     })
-  }, [projectId])
+  }, [projectId, remoteReady])
 
   const addBug = useCallback((data) => {
     const bug = { id: newId(), createdAt: new Date().toISOString(), status: 'Open', ...data }
     saveBug(projectId, bug)
     setBugs(getBugs(projectId))
-    if (isFirebaseEnabled) saveBugRemote(projectId, bug)
+    if (remoteReady) saveBugRemote(projectId, bug)
     return bug
-  }, [projectId])
+  }, [projectId, remoteReady])
 
   const removeBug = useCallback((id) => {
     deleteBug(projectId, id)
     setBugs(getBugs(projectId))
-    if (isFirebaseEnabled) deleteBugRemote(projectId, id)
-  }, [projectId])
+    if (remoteReady) deleteBugRemote(projectId, id)
+  }, [projectId, remoteReady])
 
   const updateBug = useCallback((bug) => {
     saveBug(projectId, bug)
     setBugs(getBugs(projectId))
-    if (isFirebaseEnabled) saveBugRemote(projectId, bug)
-  }, [projectId])
+    if (remoteReady) saveBugRemote(projectId, bug)
+  }, [projectId, remoteReady])
 
   return { bugs, addBug, removeBug, updateBug, refresh }
 }

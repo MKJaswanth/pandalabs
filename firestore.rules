@@ -1,0 +1,18 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Shared team workspace. Any user signed in with a real account
+    // (Google or email/password) can read and write everything under a
+    // workspace. Anonymous "guest" users are intentionally excluded — guest
+    // data stays in their browser's localStorage only, never the cloud.
+    //
+    // TODO (future): tighten to a per-workspace membership allowlist instead
+    // of "any authenticated user".
+    match /workspaces/{workspaceId}/{document=**} {
+      allow read, write: if request.auth != null
+                         && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+  }
+}

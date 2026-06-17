@@ -15,13 +15,53 @@ function download(csv, filename) {
 }
 
 export function exportTestCases(testCases, projectName) {
-  const headers = ['title', 'module', 'priority', 'status', 'assignee', 'expected', 'actual', 'createdAt']
-  download(toCSV(testCases, headers), `${projectName}-test-cases.csv`)
+  const rows = testCases.map((tc) => ({
+    'TC ID':           tc.sourceTcId || tc.id.slice(0, 8).toUpperCase(),
+    'Title':           tc.title,
+    'Module':          tc.module,
+    'Scenario':        tc.scenario,
+    'Priority':        tc.priority,
+    'Status':          tc.status,
+    'Assignee':        tc.assignee,
+    'Pre-conditions':  tc.preconditions,
+    'Steps':           (tc.steps || []).filter(Boolean).join(' | '),
+    'Test Data':       tc.testData,
+    'Expected Result': tc.expected,
+    'Actual Result':   tc.actual,
+    'Dev Remarks':     tc.devRemarks,
+    'QA Remarks':      tc.qaRemarks,
+    'Created At':      tc.createdAt,
+    'Updated At':      tc.updatedAt,
+    'Updated By':      tc.updatedBy,
+  }))
+  const headers = Object.keys(rows[0] ?? {})
+  download(toCSV(rows, headers), `${projectName}-test-cases.csv`)
 }
 
 export function exportBugs(bugs, projectName) {
-  const headers = ['title', 'description', 'severity', 'status', 'linkedTestCase', 'createdAt']
-  download(toCSV(bugs, headers), `${projectName}-bugs.csv`)
+  const rows = bugs.map((b) => ({
+    'Bug ID':             b.sourceBugId || b.id.slice(0, 8).toUpperCase(),
+    'Title':              b.title,
+    'Description':        b.description,
+    'Module':             b.module,
+    'Severity':           b.severity,
+    'Priority':           b.priority,
+    'Status':             b.status,
+    'Environment':        b.environment,
+    'Build':              b.build,
+    'Steps to Reproduce': b.stepsToReproduce,
+    'Expected Result':    b.expected,
+    'Actual Result':      b.actual,
+    'Assigned To':        b.assignedTo,
+    'Reported By':        b.reportedBy,
+    'Reported Date':      b.reportedDate,
+    'Fixed In Build':     b.fixedInBuild,
+    'Retest Status':      b.retestStatus,
+    'Dev Remarks':        b.devRemarks,
+    'QA Remarks':         b.qaRemarks,
+  }))
+  const headers = Object.keys(rows[0] ?? {})
+  download(toCSV(rows, headers), `${projectName}-bugs.csv`)
 }
 
 export function downloadBugTemplate() {
