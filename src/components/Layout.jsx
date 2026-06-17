@@ -6,6 +6,7 @@ import { useProjects } from '../hooks/useProjects'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
 import { isFirebaseEnabled } from '../utils/firebase'
 import { getStoragePercent, getStorageStatus } from '../utils/storageQuota'
+import { SyncStatusBadge } from './SyncStatusBadge'
 import { ChevronDownIcon } from './Icons'
 
 const globalNav = [
@@ -258,7 +259,10 @@ export function Layout({ children }) {
           ))}
         </nav>
 
-        <UserPill />
+        <div className="topbar-actions">
+          <SyncStatusBadge />
+          <UserPill />
+        </div>
       </header>
 
       <div className="workspace">

@@ -1,13 +1,26 @@
 import {
+  bugsKey,
+  clearWorkspaceCache,
   getBugs,
   getCurrentUser,
   getProjects,
   getTeamMembers,
   getTestCases,
   getTestRuns,
+  projectsKey,
+  runsKey,
   setCurrentUser,
   setTeamMembers,
+  testCasesKey,
 } from './storage'
+import {
+  clearWorkspaceRemote,
+  saveBugRemote,
+  saveProjectRemote,
+  saveTeamMemberRemote,
+  saveTestCaseRemote,
+  saveTestRunRemote,
+} from './remoteStorage'
 
 const BACKUP_VERSION = 1
 
@@ -17,18 +30,6 @@ function uniqueById(existing, incoming) {
   const map = new Map(existing.map((item) => [item.id, item]))
   incoming.forEach((item) => map.set(item.id, { ...map.get(item.id), ...item }))
   return [...map.values()]
-}
-
-function clearWorkspace() {
-  Object.keys(localStorage)
-    .filter((key) =>
-      key === 'qa_projects' ||
-      key === 'qa_team_members' ||
-      key === 'qa_current_user' ||
-      key.startsWith('qa_testcases_') ||
-      key.startsWith('qa_bugs_') ||
-      key.startsWith('qa_runs_'))
-    .forEach((key) => localStorage.removeItem(key))
 }
 
 export function createWorkspaceBackup() {
@@ -141,30 +142,54 @@ export function restoreWorkspaceBackup(backup, mode) {
   const incoming = backup.data
 
   if (mode === 'replace') {
-    clearWorkspace()
-    set('qa_projects', incoming.projects)
+    clearWorkspaceCache()
+    set(projectsKey(), incoming.projects)
     setTeamMembers(incoming.teamMembers)
     setCurrentUser(incoming.currentUser ?? '')
     incoming.projects.forEach((project) => {
       const data = incoming.projectData[project.id] ?? {}
-      set(`qa_testcases_${project.id}`, data.testCases ?? [])
-      set(`qa_bugs_${project.id}`, data.bugs ?? [])
-      set(`qa_runs_${project.id}`, data.runs ?? [])
+      set(testCasesKey(project.id), data.testCases ?? [])
+      set(bugsKey(project.id), data.bugs ?? [])
+      set(runsKey(project.id), data.runs ?? [])
     })
   } else {
     const projects = uniqueById(getProjects(), incoming.projects)
     const members = uniqueById(getTeamMembers(), incoming.teamMembers)
-    set('qa_projects', projects)
+    set(projectsKey(), projects)
     setTeamMembers(members)
     if (!getCurrentUser() && incoming.currentUser) setCurrentUser(incoming.currentUser)
 
     incoming.projects.forEach((project) => {
       const data = incoming.projectData[project.id] ?? {}
-      set(`qa_testcases_${project.id}`, uniqueById(getTestCases(project.id), data.testCases ?? []))
-      set(`qa_bugs_${project.id}`, uniqueById(getBugs(project.id), data.bugs ?? []))
-      set(`qa_runs_${project.id}`, uniqueById(getTestRuns(project.id), data.runs ?? []))
+      set(testCasesKey(project.id), uniqueById(getTestCases(project.id), data.testCases ?? []))
+      set(bugsKey(project.id), uniqueById(getBugs(project.id), data.bugs ?? []))
+      set(runsKey(project.id), uniqueById(getTestRuns(project.id), data.runs ?? []))
     })
   }
 
   window.dispatchEvent(new Event('qa-projects-changed'))
+}
+
+// Push a full workspace (backup-shaped) to Firestore. Shared by the Backup page
+// (restore → cloud) and the workspace conflict modal (upload local → cloud).
+// In 'replace' mode the cloud workspace is hard-wiped first. Writes run in
+// parallel for speed.
+export async function uploadWorkspaceToCloud(backup, mode = 'merge') {
+  const { projects = [], teamMembers = [], projectData = {} } = backup.data
+
+  if (mode === 'replace') {
+    await clearWorkspaceRemote()
+  }
+
+  await Promise.all(teamMembers.map((m) => saveTeamMemberRemote(m)))
+
+  await Promise.all(projects.map(async (project) => {
+    await saveProjectRemote(project)
+    const data = projectData[project.id] ?? {}
+    await Promise.all([
+      ...(data.testCases ?? []).map((tc) => saveTestCaseRemote(project.id, tc)),
+      ...(data.bugs ?? []).map((bug) => saveBugRemote(project.id, bug)),
+      ...(data.runs ?? []).map((run) => saveTestRunRemote(project.id, run)),
+    ])
+  }))
 }

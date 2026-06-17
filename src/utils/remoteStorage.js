@@ -8,6 +8,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db, defaultWorkspaceId, isFirebaseEnabled } from './firebase'
+import { setSyncStatus } from './syncStatus'
 
 // Resolve workspace ID at call time. QA Lab is a shared team workspace, so
 // the configured workspace ID must be stable across signed-in users.
@@ -57,6 +58,7 @@ function subscribe(pathParts, onChange, sortFn = byCreatedAtDesc) {
   return onSnapshot(
     collection(db, ...pathParts),
     (snapshot) => {
+      setSyncStatus('synced')
       if (subscriptionsSuppressed) return
       const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
       onChange(sortFn ? rows.sort(sortFn) : rows)
@@ -64,6 +66,7 @@ function subscribe(pathParts, onChange, sortFn = byCreatedAtDesc) {
     (error) => {
       // Without an error handler a permission/network failure silently kills
       // the listener — the app looks "connected" while nothing ever syncs.
+      setSyncStatus('error')
       console.error(`[remoteStorage] Snapshot subscription failed for ${pathParts.join('/')}:`, error)
     },
   )
@@ -110,6 +113,14 @@ const runsPath        = (projectId)  => [...projectPath(projectId), 'runs']
 
 export const subscribeProjects      = (onChange)             => subscribe(projectsPath(), onChange)
 export const saveProjectRemote      = (project)              => upsert(projectsPath(), project)
+
+// One-shot authoritative read of the workspace's projects, used by the
+// workspace sync gate to decide synced vs empty vs conflict before rendering.
+export async function getProjectsOnce() {
+  ensureFirebase()
+  const snapshot = await getDocs(collection(db, ...projectsPath()))
+  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
+}
 export async function deleteProjectRemote(projectId) {
   // Child collections are hard-deleted to reclaim space; the project doc itself
   // is tombstoned so the deletion propagates to other devices (a hard delete

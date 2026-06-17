@@ -1,4 +1,4 @@
-const draftKey = (projectId) => `qa_run_draft_${projectId}`
+import { runDraftKey } from './storage'
 
 /**
  * Returns the persisted draft for the given project, or null if none exists.
@@ -9,7 +9,7 @@ const draftKey = (projectId) => `qa_run_draft_${projectId}`
 export function getRunDraft(projectId) {
   if (!projectId) return null
   try {
-    return JSON.parse(localStorage.getItem(draftKey(projectId)) ?? 'null')
+    return JSON.parse(localStorage.getItem(runDraftKey(projectId)) ?? 'null')
   } catch {
     return null
   }
@@ -20,7 +20,7 @@ export function saveRunDraft(projectId, draft) {
   if (!projectId) return
   try {
     localStorage.setItem(
-      draftKey(projectId),
+      runDraftKey(projectId),
       JSON.stringify({ ...draft, projectId, updatedAt: new Date().toISOString() }),
     )
   } catch {
@@ -31,5 +31,5 @@ export function saveRunDraft(projectId, draft) {
 /** Removes the draft after a run is finished or explicitly discarded. */
 export function clearRunDraft(projectId) {
   if (!projectId) return
-  localStorage.removeItem(draftKey(projectId))
+  localStorage.removeItem(runDraftKey(projectId))
 }

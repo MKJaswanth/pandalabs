@@ -1,5 +1,6 @@
 import { newId } from './id'
 import { normalizeTestStatus } from './status'
+import { defaultWorkspaceId } from './firebase'
 
 const get = (key) => JSON.parse(localStorage.getItem(key) ?? 'null')
 const set = (key, val) => {
@@ -16,6 +17,53 @@ const set = (key, val) => {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Cache keys — localStorage is a workspace-scoped CACHE, not the source of
+// truth. Namespacing by workspace prevents one workspace's cached data from
+// leaking into another (and into a different signed-in session). Firestore is
+// authoritative; these keys only hold a local copy / offline fallback.
+// `qa_current_user` stays global — it's the local display name, not data.
+// ---------------------------------------------------------------------------
+const cachePrefix = () => `qa_cache_${defaultWorkspaceId}_`
+export const projectsKey    = () => `${cachePrefix()}projects`
+export const testCasesKey   = (projectId) => `${cachePrefix()}testcases_${projectId}`
+export const bugsKey        = (projectId) => `${cachePrefix()}bugs_${projectId}`
+export const runsKey        = (projectId) => `${cachePrefix()}runs_${projectId}`
+export const teamMembersKey = () => `${cachePrefix()}team_members`
+export const runDraftKey    = (projectId) => `${cachePrefix()}rundraft_${projectId}`
+
+// One-time migration of the old generic keys (qa_projects, qa_testcases_{id}, …)
+// to the workspace-namespaced keys. Copies a value across only if the new key
+// is empty (never clobbers fresher data), then removes the legacy key. Safe to
+// run on every startup; a no-op once migrated.
+export function migrateLegacyCache() {
+  const moves = []
+  for (const key of Object.keys(localStorage)) {
+    if (key === 'qa_projects') moves.push([key, projectsKey()])
+    else if (key === 'qa_team_members') moves.push([key, teamMembersKey()])
+    else if (key.startsWith('qa_testcases_')) moves.push([key, testCasesKey(key.slice('qa_testcases_'.length))])
+    else if (key.startsWith('qa_bugs_')) moves.push([key, bugsKey(key.slice('qa_bugs_'.length))])
+    else if (key.startsWith('qa_runs_')) moves.push([key, runsKey(key.slice('qa_runs_'.length))])
+    else if (key.startsWith('qa_run_draft_')) moves.push([key, runDraftKey(key.slice('qa_run_draft_'.length))])
+  }
+  moves.forEach(([legacyKey, newKey]) => {
+    if (localStorage.getItem(newKey) === null) {
+      const val = localStorage.getItem(legacyKey)
+      if (val !== null) localStorage.setItem(newKey, val)
+    }
+    localStorage.removeItem(legacyKey)
+  })
+}
+
+// Remove every cached record for the current workspace. Used on logout and by
+// the conflict modal's "Clear local cache" action. Leaves qa_current_user.
+export function clearWorkspaceCache() {
+  const prefix = cachePrefix()
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => localStorage.removeItem(key))
+}
+
 // Soft-delete marker. Deleted records are kept in storage (and synced as
 // tombstones) so the delete propagates across devices instead of being
 // resurrected by a merge. The public getters below hide them.
@@ -28,26 +76,26 @@ const markDeleted = (list, id) => {
 }
 
 // Projects
-export const getProjectsRaw = () => get('qa_projects') ?? []
+export const getProjectsRaw = () => get(projectsKey()) ?? []
 export const getProjects = () => excludeDeleted(getProjectsRaw())
-export const setProjects = (projects) => set('qa_projects', projects)
+export const setProjects = (projects) => set(projectsKey(), projects)
 export const saveProject = (project) => {
   const list = getProjectsRaw()
   const idx = list.findIndex((p) => p.id === project.id)
   idx >= 0 ? (list[idx] = project) : list.push(project)
-  set('qa_projects', list)
+  set(projectsKey(), list)
 }
 export const deleteProject = (id) => {
-  set('qa_projects', markDeleted(getProjectsRaw(), id))
-  localStorage.removeItem(`qa_testcases_${id}`)
-  localStorage.removeItem(`qa_bugs_${id}`)
-  localStorage.removeItem(`qa_runs_${id}`)
+  set(projectsKey(), markDeleted(getProjectsRaw(), id))
+  localStorage.removeItem(testCasesKey(id))
+  localStorage.removeItem(bugsKey(id))
+  localStorage.removeItem(runsKey(id))
 }
 
 // Test cases
 const normalizeTestCase = (tc) => ({ ...tc, status: normalizeTestStatus(tc.status) })
 export const getTestCasesRaw = (projectId) => {
-  const key = `qa_testcases_${projectId}`
+  const key = testCasesKey(projectId)
   const list = get(key) ?? []
   const normalized = list.map(normalizeTestCase)
   if (JSON.stringify(list) !== JSON.stringify(normalized)) set(key, normalized)
@@ -55,42 +103,42 @@ export const getTestCasesRaw = (projectId) => {
 }
 export const getTestCases = (projectId) => excludeDeleted(getTestCasesRaw(projectId))
 export const setTestCases = (projectId, testCases) =>
-  set(`qa_testcases_${projectId}`, testCases.map(normalizeTestCase))
+  set(testCasesKey(projectId), testCases.map(normalizeTestCase))
 export const saveTestCase = (projectId, tc) => {
   const list = getTestCasesRaw(projectId)
   const idx = list.findIndex((t) => t.id === tc.id)
   const normalized = normalizeTestCase(tc)
   idx >= 0 ? (list[idx] = normalized) : list.push(normalized)
-  set(`qa_testcases_${projectId}`, list)
+  set(testCasesKey(projectId), list)
 }
 export const deleteTestCase = (projectId, id) =>
-  set(`qa_testcases_${projectId}`, markDeleted(getTestCasesRaw(projectId), id))
+  set(testCasesKey(projectId), markDeleted(getTestCasesRaw(projectId), id))
 
 // Bugs
-export const getBugsRaw = (projectId) => get(`qa_bugs_${projectId}`) ?? []
+export const getBugsRaw = (projectId) => get(bugsKey(projectId)) ?? []
 export const getBugs = (projectId) => excludeDeleted(getBugsRaw(projectId))
-export const setBugs = (projectId, bugs) => set(`qa_bugs_${projectId}`, bugs)
+export const setBugs = (projectId, bugs) => set(bugsKey(projectId), bugs)
 export const saveBug = (projectId, bug) => {
   const list = getBugsRaw(projectId)
   const idx = list.findIndex((b) => b.id === bug.id)
   idx >= 0 ? (list[idx] = bug) : list.push(bug)
-  set(`qa_bugs_${projectId}`, list)
+  set(bugsKey(projectId), list)
 }
 export const deleteBug = (projectId, id) =>
-  set(`qa_bugs_${projectId}`, markDeleted(getBugsRaw(projectId), id))
+  set(bugsKey(projectId), markDeleted(getBugsRaw(projectId), id))
 
 // Test runs
-export const getTestRunsRaw = (projectId) => get(`qa_runs_${projectId}`) ?? []
+export const getTestRunsRaw = (projectId) => get(runsKey(projectId)) ?? []
 export const getTestRuns = (projectId) => excludeDeleted(getTestRunsRaw(projectId))
-export const setTestRuns = (projectId, runs) => set(`qa_runs_${projectId}`, runs)
+export const setTestRuns = (projectId, runs) => set(runsKey(projectId), runs)
 export const saveTestRun = (projectId, run) => {
   const list = getTestRunsRaw(projectId)
   const idx = list.findIndex((r) => r.id === run.id)
   idx >= 0 ? (list[idx] = run) : list.push(run)
-  set(`qa_runs_${projectId}`, list)
+  set(runsKey(projectId), list)
 }
 export const deleteTestRun = (projectId, id) =>
-  set(`qa_runs_${projectId}`, markDeleted(getTestRunsRaw(projectId), id))
+  set(runsKey(projectId), markDeleted(getTestRunsRaw(projectId), id))
 
 // Merge helpers — used by Firebase subscription callbacks so local records
 // are never silently removed when Firestore has fewer items than localStorage.
@@ -109,17 +157,17 @@ export const setCurrentUser = (user) => set('qa_current_user', user)
 
 // Team members
 export const getTeamMembersRaw = () => {
-  const members = get('qa_team_members') ?? []
+  const members = get(teamMembersKey()) ?? []
   if (members.some((member) => typeof member === 'string')) {
     const migrated = members.map((member) =>
       typeof member === 'string' ? { id: newId(), name: member } : member,
     )
-    set('qa_team_members', migrated)
+    set(teamMembersKey(), migrated)
     return migrated
   }
   return members
 }
 export const getTeamMembers = () => excludeDeleted(getTeamMembersRaw())
-export const setTeamMembers = (members) => set('qa_team_members', members)
+export const setTeamMembers = (members) => set(teamMembersKey(), members)
 export const deleteTeamMember = (id) =>
-  set('qa_team_members', markDeleted(getTeamMembersRaw(), id))
+  set(teamMembersKey(), markDeleted(getTeamMembersRaw(), id))

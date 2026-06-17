@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Layout } from './components/Layout'
+import { WorkspaceGate } from './components/WorkspaceGate'
 import { AuthProvider } from './context/AuthContext'
+import { WorkspaceSyncProvider } from './context/WorkspaceSyncContext'
 import { useAuth } from './context/useAuth'
 import { ConfirmProvider } from './context/ConfirmContext'
 import { ToastProvider } from './context/ToastContext'
@@ -117,13 +119,17 @@ function AppShell() {
 
   return (
     <UserContext.Provider value={{ user, updateUser }}>
-      <HashRouter>
-        <ErrorBoundary>
-          <Layout>
-            {appRoutes}
-          </Layout>
-        </ErrorBoundary>
-      </HashRouter>
+      <WorkspaceSyncProvider>
+        <WorkspaceGate>
+          <HashRouter>
+            <ErrorBoundary>
+              <Layout>
+                {appRoutes}
+              </Layout>
+            </ErrorBoundary>
+          </HashRouter>
+        </WorkspaceGate>
+      </WorkspaceSyncProvider>
     </UserContext.Provider>
   )
 }

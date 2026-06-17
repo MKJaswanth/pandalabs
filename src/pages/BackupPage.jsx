@@ -3,20 +3,13 @@ import { PageHeader } from '../components/PageHeader'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { isFirebaseEnabled } from '../utils/firebase'
-import {
-  clearWorkspaceRemote,
-  saveBugRemote,
-  saveProjectRemote,
-  saveTeamMemberRemote,
-  saveTestCaseRemote,
-  saveTestRunRemote,
-  suppressSubscriptions,
-} from '../utils/remoteStorage'
+import { suppressSubscriptions } from '../utils/remoteStorage'
 import {
   createWorkspaceBackup,
   downloadWorkspaceBackup,
   restoreWorkspaceBackup,
   summarizeBackup,
+  uploadWorkspaceToCloud,
   validateWorkspaceBackup,
 } from '../utils/backup'
 
@@ -30,27 +23,6 @@ function SummaryGrid({ summary }) {
       <article><span>Members</span><strong>{summary.teamMembers}</strong></article>
     </div>
   )
-}
-
-async function syncBackupToCloud(backup, mode) {
-  const { projects, teamMembers, projectData } = backup.data
-
-  if (mode === 'replace') {
-    await clearWorkspaceRemote()
-  }
-
-  // Write all records in parallel — vastly faster than sequential awaits
-  await Promise.all(teamMembers.map((m) => saveTeamMemberRemote(m)))
-
-  await Promise.all(projects.map(async (project) => {
-    await saveProjectRemote(project)
-    const data = projectData[project.id] ?? {}
-    await Promise.all([
-      ...(data.testCases ?? []).map((tc)  => saveTestCaseRemote(project.id, tc)),
-      ...(data.bugs      ?? []).map((bug) => saveBugRemote(project.id, bug)),
-      ...(data.runs      ?? []).map((run) => saveTestRunRemote(project.id, run)),
-    ])
-  }))
 }
 
 export function BackupPage() {
@@ -85,7 +57,7 @@ export function BackupPage() {
     setSyncing(true)
     setSyncError('')
     try {
-      await syncBackupToCloud(parsed, mode)
+      await uploadWorkspaceToCloud(parsed, mode)
       toast.success('Workspace restored and synced to cloud.')
       setTimeout(() => window.location.reload(), 900)
     } catch (err) {
