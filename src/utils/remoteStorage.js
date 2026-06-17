@@ -2,13 +2,16 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   setDoc,
   writeBatch,
 } from 'firebase/firestore'
-import { db, defaultWorkspaceId, isFirebaseEnabled } from './firebase'
+import { db, defaultWorkspaceId, isFirebaseEnabled, auth } from './firebase'
 import { setSyncStatus } from './syncStatus'
+import { newId } from './id'
+
 
 // Resolve workspace ID at call time. QA Lab is a shared team workspace, so
 // the configured workspace ID must be stable across signed-in users.
@@ -186,3 +189,76 @@ export const deleteBugRemote        = (projectId, bugId)     => tombstone(bugsPa
 
 export const subscribeTestRuns      = (projectId, onChange)  => subscribe(runsPath(projectId), onChange)
 export const saveTestRunRemote      = (projectId, run)       => upsert(runsPath(projectId), run)
+
+function getCurrentUserName() {
+  try {
+    return JSON.parse(localStorage.getItem('qa_current_user') ?? 'null') ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export async function syncUserProfileRemote(firebaseUser, customName) {
+  if (!isFirebaseEnabled || !firebaseUser || firebaseUser.isAnonymous || !db) return
+  ensureFirebase()
+
+  const memberRef = doc(db, ...workspacePath(), 'members', firebaseUser.uid)
+  try {
+    const docSnap = await getDoc(memberRef)
+    const now = new Date().toISOString()
+    
+    let createdAt = now
+    let existingData = {}
+    if (docSnap.exists()) {
+      existingData = docSnap.data()
+      if (existingData.createdAt) {
+        createdAt = existingData.createdAt
+      }
+    }
+    
+    const profileName = customName || existingData.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User'
+    const profile = {
+      uid: firebaseUser.uid,
+      name: profileName,
+      email: firebaseUser.email || '',
+      photoURL: firebaseUser.photoURL || '',
+      provider: firebaseUser.providerData?.[0]?.providerId || 'password',
+      createdAt,
+      lastSeenAt: now,
+    }
+    
+    await setDoc(memberRef, cleanRecord(profile), { merge: true })
+  } catch (err) {
+    console.error('[remoteStorage] Failed to sync user profile:', err)
+  }
+}
+
+export async function logActivityRemote(activity) {
+  if (!isFirebaseEnabled || !db) return
+  try {
+    const id = activity.id || newId()
+    const record = {
+      id,
+      ...activity,
+      createdAt: activity.createdAt || new Date().toISOString(),
+      userId: auth?.currentUser?.uid || '',
+      userName: getCurrentUserName(),
+    }
+    await setDoc(doc(db, ...workspacePath(), 'activity', id), cleanRecord(record))
+  } catch (err) {
+    console.error('[remoteStorage] Activity logging failed:', err)
+  }
+}
+
+export const subscribeActivity = (onChange) =>
+  subscribe([...workspacePath(), 'activity'], onChange, byCreatedAtDesc)
+
+export const subscribeRunDrafts = (projectId, onChange) =>
+  subscribe([...projectPath(projectId), 'runDrafts'], onChange, byCreatedAtDesc)
+
+export const saveRunDraftRemote = (projectId, draft) =>
+  upsert([...projectPath(projectId), 'runDrafts'], draft)
+
+export const deleteRunDraftRemote = (projectId, draftId) =>
+  tombstone([...projectPath(projectId), 'runDrafts'], draftId)
+

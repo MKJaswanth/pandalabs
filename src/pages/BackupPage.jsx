@@ -91,6 +91,17 @@ export function BackupPage() {
         // Cloud sync must succeed before we reload — if we reload with Firestore
         // still holding stale data, subscriptions will wipe the restored localStorage.
         await runCloudSync()
+        try {
+          const { logActivityRemote } = await import('../utils/remoteStorage')
+          await logActivityRemote({
+            type: 'backup_restored',
+            entityType: 'backup',
+            entityId: parsed.exportedAt || new Date().toISOString(),
+            message: `Workspace backup restored (${mode === 'replace' ? 'replaced workspace' : 'merged backup'})`,
+          })
+        } catch (err) {
+          console.error('[backup] Failed to log backup_restored activity:', err)
+        }
       } else {
         toast.success(mode === 'replace' ? 'Workspace restored from backup.' : 'Backup merged into workspace.')
         setTimeout(() => window.location.reload(), 900)

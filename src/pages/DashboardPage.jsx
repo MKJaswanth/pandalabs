@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
@@ -5,6 +6,7 @@ import { useUser } from '../context/UserContext'
 import { useProjects } from '../hooks/useProjects'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
 import { ArrowRightIcon } from '../components/Icons'
+import { isFirebaseEnabled } from '../utils/firebase'
 
 function QuickActionIcon({ name }) {
   const common = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
@@ -20,6 +22,20 @@ function QuickActionIcon({ name }) {
 export function DashboardPage() {
   const { user } = useUser()
   const { projects } = useProjects()
+  const [activities, setActivities] = useState([])
+
+  useEffect(() => {
+    if (!isFirebaseEnabled) return undefined
+    let unsubscribe
+    import('../utils/remoteStorage').then(({ subscribeActivity }) => {
+      unsubscribe = subscribeActivity((list) => {
+        setActivities(list.slice(0, 5))
+      })
+    })
+    return () => {
+      if (unsubscribe) unsubscribe()
+    }
+  }, [])
 
   const enriched = projects.map((p) => {
     const cases = getTestCases(p.id)
@@ -248,6 +264,33 @@ export function DashboardPage() {
             </div>
           )}
         </section>
+        {/* Recent Activity */}
+        {isFirebaseEnabled && (
+          <section className="panel dashboard-detail-panel">
+            <div className="section-header">
+              <h2>Recent activity</h2>
+            </div>
+            {activities.length === 0 ? (
+              <p className="panel-empty-text">No activity logged yet.</p>
+            ) : (
+              <div className="dashboard-list">
+                {activities.map((act) => (
+                  <div className="dashboard-list-item" key={act.id}>
+                    <div className="list-item-main">
+                      <span className="list-item-title" style={{ fontSize: '13px', fontWeight: 'normal', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                        {act.message}
+                      </span>
+                    </div>
+                    <div className="list-item-meta">
+                      <span className="meta-assignee">{act.userName || 'System'}</span>
+                      <span className="meta-date"> · {new Date(act.createdAt).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
 
       {/* Quick actions */}

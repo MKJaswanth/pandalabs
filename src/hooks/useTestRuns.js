@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { newId } from '../utils/id'
-import { getTestRuns, getTestRunsRaw, isDeleted, mergeById, saveTestRun, setTestRuns as setTestRunsCache } from '../utils/storage'
+import { getTestRuns, getTestRunsRaw, isDeleted, mergeById, saveTestRun, setTestRuns as setTestRunsCache, getCurrentUser } from '../utils/storage'
 import { saveTestRunRemote, subscribeTestRuns } from '../utils/remoteStorage'
 import { useRemoteSync } from './useRemoteSync'
+import { auth } from '../utils/firebase'
 
 export function useTestRuns(projectId) {
   const [runs, setRuns] = useState(() => getTestRuns(projectId))
@@ -20,7 +21,15 @@ export function useTestRuns(projectId) {
   }, [projectId, remoteReady])
 
   const addRun = useCallback((data) => {
-    const run = { id: newId(), date: new Date().toISOString(), ...data }
+    const creatorId = auth?.currentUser?.uid || ''
+    const creatorName = getCurrentUser() || ''
+    const run = {
+      id: newId(),
+      date: new Date().toISOString(),
+      executedById: creatorId,
+      executedByName: creatorName,
+      ...data,
+    }
     saveTestRun(projectId, run)
     setRuns(getTestRuns(projectId))
     if (remoteReady) saveTestRunRemote(projectId, run)

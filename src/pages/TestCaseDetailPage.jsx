@@ -247,7 +247,7 @@ export function TestCaseDetailPage() {
                   <tbody>
                     {linkedBugs.map((bug) => (
                       <tr key={bug.id}>
-                        <td>
+                        <td className="title-cell">
                           <Link to={`/projects/${projectId}/bugs`} className="bug-title-link">
                             {bug.title}
                           </Link>

@@ -3,10 +3,11 @@ import { Link, useParams } from 'react-router-dom'
 import { AttachmentField } from '../components/AttachmentField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { CheckIcon } from '../components/Icons'
+import { CheckIcon, BugIcon } from '../components/Icons'
 import { useUser } from '../context/UserContext'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
+import { useAuth } from '../context/useAuth'
 import { useBugs } from '../hooks/useBugs'
 import { useProjects } from '../hooks/useProjects'
 import { useTestCases } from '../hooks/useTestCases'
@@ -15,6 +16,8 @@ import { historyEntry, withHistory } from '../utils/history'
 import { newId } from '../utils/id'
 import { clearRunDraft, getRunDraft, saveRunDraft } from '../utils/runDrafts'
 import { STATUS_TONE, TEST_STATUSES, summarizeStatuses } from '../utils/status'
+import { isFirebaseEnabled, auth } from '../utils/firebase'
+import { saveRunDraftRemote, deleteRunDraftRemote, logActivityRemote } from '../utils/remoteStorage'
 
 const BUG_STATUSES = ['Open', 'In review', 'Closed']
 const SEVERITIES = ['Critical', 'Major', 'Minor']
@@ -95,12 +98,48 @@ export function TestRunsPage() {
   const toast = useToast()
   const { projects } = useProjects()
   const { testCases, updateTestCase } = useTestCases(projectId)
-  const { addBug } = useBugs(projectId)
+  const { bugs, addBug } = useBugs(projectId)
   const { runs, addRun } = useTestRuns(projectId)
   const project = projects.find((p) => p.id === projectId)
 
-  // Persisted draft loaded once at mount — shows resume banner until consumed or dismissed
-  const [draft, setDraft] = useState(() => getRunDraft(projectId))
+  const { firebaseUser } = useAuth()
+  const [remoteDrafts, setRemoteDrafts] = useState([])
+  const [currentDraftId, setCurrentDraftId] = useState(null)
+  const [draftDismissed, setDraftDismissed] = useState(false)
+
+  useEffect(() => {
+    if (!isFirebaseEnabled || !firebaseUser || !projectId) return undefined
+    let unsubscribe
+    import('../utils/remoteStorage').then(({ subscribeRunDrafts }) => {
+      unsubscribe = subscribeRunDrafts(projectId, (draftsList) => {
+        const active = draftsList.filter(d => !d.deleted && d.status === 'draft')
+        setRemoteDrafts(active)
+      })
+    })
+    return () => {
+      if (unsubscribe) unsubscribe()
+    }
+  }, [projectId, firebaseUser])
+
+  const [prevProjectId, setPrevProjectId] = useState(projectId)
+  if (projectId !== prevProjectId) {
+    setPrevProjectId(projectId)
+    setDraftDismissed(false)
+  }
+
+  const activeDraft = useMemo(() => {
+    if (draftDismissed) return null
+    const localDraft = getRunDraft(projectId)
+    const remoteDraft = firebaseUser
+      ? remoteDrafts.find((d) => d.createdBy === firebaseUser.uid)
+      : null
+    if (localDraft && remoteDraft) {
+      const localTime = new Date(localDraft.updatedAt || 0).getTime()
+      const remoteTime = new Date(remoteDraft.updatedAt || 0).getTime()
+      return localTime > remoteTime ? localDraft : remoteDraft
+    }
+    return localDraft || remoteDraft || null
+  }, [projectId, firebaseUser, remoteDrafts, draftDismissed])
 
   const [mode, setMode] = useState('setup')
   const [runName, setRunName] = useState('')
@@ -136,6 +175,10 @@ export function TestRunsPage() {
   const currentCase = selectedCases[currentIndex]
   const currentResult = currentCase
     ? results[currentCase.id] ?? { status: currentCase.status ?? 'Not Executed', actual: currentCase.actual ?? '' }
+    : null
+
+  const linkedBug = currentResult?.bugId
+    ? bugs.find((b) => b.id === currentResult.bugId)
     : null
 
   const resultItems = selectedCases.map((tc) => ({
@@ -189,6 +232,8 @@ export function TestRunsPage() {
       { status: 'Not Executed', actual: '' },
     ]))
     const now = new Date().toISOString()
+    const newDraftId = newId()
+    setCurrentDraftId(newDraftId)
     setResults(initial)
     setCurrentIndex(0)
     setSavedRun(null)
@@ -196,10 +241,11 @@ export function TestRunsPage() {
     setLoggedBugCaseIds([])
     setLoggedBugIds([])
     setStartedAt(now)
-    setDraft(null)
+    setDraftDismissed(true)
     setMode('execute')
-    // Persist draft synchronously so a refresh right after Start still offers resume
-    saveRunDraft(projectId, {
+    const draftData = {
+      id: newDraftId,
+      projectId,
       runName,
       build,
       selectedIds,
@@ -209,7 +255,23 @@ export function TestRunsPage() {
       loggedBugCaseIds: [],
       loggedBugIds: [],
       startedAt: now,
-    })
+      status: 'draft',
+      createdBy: firebaseUser?.uid || '',
+      createdByName: user || '',
+      updatedAt: now,
+    }
+    saveRunDraft(projectId, draftData)
+    if (isFirebaseEnabled && firebaseUser) {
+      saveRunDraftRemote(projectId, draftData)
+      logActivityRemote({
+        id: newId(),
+        type: 'test_run_started',
+        entityType: 'test_run',
+        entityId: newDraftId,
+        projectId,
+        message: `Test run "${runName || 'Unnamed run'}" started`,
+      })
+    }
   }
 
   const startRunWithIds = (ids) => {
@@ -220,6 +282,8 @@ export function TestRunsPage() {
       { status: 'Not Executed', actual: '' },
     ]))
     const now = new Date().toISOString()
+    const newDraftId = newId()
+    setCurrentDraftId(newDraftId)
     setResults(initial)
     setCurrentIndex(0)
     setSavedRun(null)
@@ -227,9 +291,11 @@ export function TestRunsPage() {
     setLoggedBugCaseIds([])
     setLoggedBugIds([])
     setStartedAt(now)
-    setDraft(null)
+    setDraftDismissed(true)
     setMode('execute')
-    saveRunDraft(projectId, {
+    const draftData = {
+      id: newDraftId,
+      projectId,
       runName,
       build,
       selectedIds: ids,
@@ -239,14 +305,29 @@ export function TestRunsPage() {
       loggedBugCaseIds: [],
       loggedBugIds: [],
       startedAt: now,
-    })
+      status: 'draft',
+      createdBy: firebaseUser?.uid || '',
+      createdByName: user || '',
+      updatedAt: now,
+    }
+    saveRunDraft(projectId, draftData)
+    if (isFirebaseEnabled && firebaseUser) {
+      saveRunDraftRemote(projectId, draftData)
+      logActivityRemote({
+        id: newId(),
+        type: 'test_run_started',
+        entityType: 'test_run',
+        entityId: newDraftId,
+        projectId,
+        message: `Test run "${runName || 'Unnamed run'}" started`,
+      })
+    }
   }
 
   const updateCurrent = (patch) => {
     if (!currentCase) return
     const newResult = { ...currentResult, ...patch }
     setResults((prev) => ({ ...prev, [currentCase.id]: newResult }))
-    // Persist status immediately so changes survive without clicking Finish Run
     if ('status' in patch && patch.status !== currentCase.status) {
       updateTestCase({
         ...currentCase,
@@ -273,6 +354,7 @@ export function TestRunsPage() {
         expected: tc.expected ?? '',
         status: result.status,
         actual: result.actual ?? '',
+        bugId: result.bugId ?? '',
       }
     })
 
@@ -280,33 +362,38 @@ export function TestRunsPage() {
     const passRate = summary.total ? Math.round((summary.passed / summary.total) * 100) : 0
     const runId = newId()
 
-    // Auto-create bugs for Fail/Blocker cases that didn't have a bug logged manually
     const autoBugIds = []
     const failedUnlogged = executed.filter(
       (tc) => (tc.status === 'Fail' || tc.status === 'Blocker') && !loggedBugCaseIds.includes(tc.testCaseId),
     )
     for (const tc of failedUnlogged) {
       const bug = addBug({
-        title: `${tc.title} failed during run`,
+        title: `${tc.title} failed during test run`,
         description: tc.actual ? `Actual result: ${tc.actual}` : '',
         severity: tc.status === 'Blocker' ? 'Critical' : 'Major',
         status: 'Open',
         linkedTestCase: tc.testCaseId,
         module: tc.module || '',
         priority: tc.priority || '',
-        reportedBy: user,
+        reportedBy: auth?.currentUser?.uid || '',
+        reportedByName: user || '',
         linkedRunId: runId,
         history: [historyEntry('created', user, 'Auto-created from failed test run execution')],
       })
       autoBugIds.push(bug.id)
+      const idx = executed.findIndex(item => item.testCaseId === tc.testCaseId)
+      if (idx >= 0) {
+        executed[idx].bugId = bug.id
+      }
     }
 
     const totalBugsLogged = bugsLogged + autoBugIds.length
     const allLinkedBugIds = [...loggedBugIds, ...autoBugIds]
 
+    const runNameText = runName.trim() || `${project?.name ?? 'Project'} run`
     const run = addRun({
       id: runId,
-      name: runName.trim() || `${project?.name ?? 'Project'} run`,
+      name: runNameText,
       build: build.trim() || '',
       executedBy: user ?? '',
       startedAt: startedAt ?? new Date().toISOString(),
@@ -319,12 +406,34 @@ export function TestRunsPage() {
       ...summary,
     })
 
-    // Draft is no longer needed — run was persisted successfully
     clearRunDraft(projectId)
-    setDraft(null)
+    if (isFirebaseEnabled && firebaseUser && currentDraftId) {
+      deleteRunDraftRemote(projectId, currentDraftId)
+    }
+    setDraftDismissed(true)
 
     setSavedRun(run)
     setMode('complete')
+
+    if (isFirebaseEnabled && firebaseUser) {
+      logActivityRemote({
+        id: newId(),
+        type: 'test_run_completed',
+        entityType: 'test_run',
+        entityId: runId,
+        projectId,
+        message: `Test run "${runNameText}" completed`,
+        after: {
+          id: runId,
+          name: runNameText,
+          passRate,
+          total: summary.total,
+          passed: summary.passed,
+          failed: summary.failed,
+          blocker: summary.blocker,
+        }
+      })
+    }
 
     if (autoBugIds.length > 0) {
       toast.info(`Run saved. ${autoBugIds.length} bug${autoBugIds.length !== 1 ? 's' : ''} auto-logged for failed cases.`)
@@ -336,11 +445,14 @@ export function TestRunsPage() {
   const openRunBug = () => {
     if (!currentCase) return
     setBugForm({
-      title: `${currentCase.title} failed during execution`,
-      description: currentResult?.actual ? `Actual result: ${currentResult.actual}` : '',
+      title: `${currentCase.title} failed during test run`,
+      module: currentCase.module || '',
+      linkedTestCase: currentCase.id,
+      draftRunId: currentDraftId,
       severity: currentResult?.status === 'Blocker' ? 'Critical' : 'Major',
       status: 'Open',
-      linkedTestCase: currentCase.id,
+      description: currentResult?.actual || '',
+      expected: currentCase.expected || '',
       attachments: [],
     })
   }
@@ -352,44 +464,66 @@ export function TestRunsPage() {
     if (!bugForm?.title.trim()) return
     const bug = addBug({
       ...bugForm,
-      reportedBy: user,
+      reportedBy: auth?.currentUser?.uid || '',
+      reportedByName: user || '',
       history: [historyEntry('created', user, 'Bug created during test run execution')],
     })
     setBugsLogged((count) => count + 1)
     setLoggedBugCaseIds((ids) => [...ids, currentCase.id])
     setLoggedBugIds((ids) => [...ids, bug.id])
+    setResults((prev) => ({
+      ...prev,
+      [currentCase.id]: {
+        ...(prev[currentCase.id] ?? { status: 'Not Executed', actual: '' }),
+        bugId: bug.id,
+      }
+    }))
     setBugForm(null)
     toast.success('Bug logged.')
   }
 
   // ── Draft: resume ──────────────────────────────────────────────────────────
   const resumeDraft = () => {
-    if (!draft) return
-    // Discard any case IDs that have since been deleted from the project
-    const validIds = (draft.selectedIds ?? []).filter((id) => testCases.some((tc) => tc.id === id))
+    if (!activeDraft) return
+    const validIds = (activeDraft.selectedIds ?? []).filter((id) => testCases.some((tc) => tc.id === id))
     if (validIds.length === 0) {
       clearRunDraft(projectId)
-      setDraft(null)
+      if (isFirebaseEnabled && firebaseUser) {
+        deleteRunDraftRemote(projectId, activeDraft.id)
+      }
+      setDraftDismissed(true)
       toast.warning('All test cases from the saved draft no longer exist. Draft discarded.')
       return
     }
-    const safeIndex = Math.min(draft.currentIndex ?? 0, validIds.length - 1)
-    setRunName(draft.runName ?? '')
-    setBuild(draft.build ?? '')
+    const safeIndex = Math.min(activeDraft.currentIndex ?? 0, validIds.length - 1)
+    setRunName(activeDraft.runName ?? '')
+    setBuild(activeDraft.build ?? '')
     setSelectedIds(validIds)
     setCurrentIndex(safeIndex)
-    setResults(draft.results ?? {})
-    setBugsLogged(draft.bugsLogged ?? 0)
-    setLoggedBugCaseIds(draft.loggedBugCaseIds ?? [])
-    setLoggedBugIds(draft.loggedBugIds ?? [])
-    setStartedAt(draft.startedAt ?? new Date().toISOString())
+    setResults(activeDraft.results ?? {})
+    setBugsLogged(activeDraft.bugsLogged ?? 0)
+    setLoggedBugCaseIds(activeDraft.loggedBugCaseIds ?? [])
+    setLoggedBugIds(activeDraft.loggedBugIds ?? [])
+    setStartedAt(activeDraft.startedAt ?? new Date().toISOString())
+    setCurrentDraftId(activeDraft.id)
     setSavedRun(null)
-    setDraft(null)
+    setDraftDismissed(true)
     setMode('execute')
+    if (isFirebaseEnabled && firebaseUser) {
+      logActivityRemote({
+        id: newId(),
+        type: 'test_run_resumed',
+        entityType: 'test_run',
+        entityId: activeDraft.id,
+        projectId,
+        message: `Test run "${activeDraft.runName || 'Unnamed run'}" resumed`,
+      })
+    }
   }
 
   // ── Draft: discard ─────────────────────────────────────────────────────────
   const discardDraft = async () => {
+    if (!activeDraft) return
     const ok = await confirm({
       title: 'Discard draft?',
       message: 'The saved progress for this test run will be permanently deleted.',
@@ -398,14 +532,19 @@ export function TestRunsPage() {
     })
     if (!ok) return
     clearRunDraft(projectId)
-    setDraft(null)
+    if (isFirebaseEnabled && firebaseUser) {
+      deleteRunDraftRemote(projectId, activeDraft.id)
+    }
+    setDraftDismissed(true)
     toast.success('Draft discarded.')
   }
 
   // ── Draft: autosave during execution ───────────────────────────────────────
   useEffect(() => {
-    if (mode !== 'execute') return
-    saveRunDraft(projectId, {
+    if (mode !== 'execute' || !currentDraftId) return
+    const draftData = {
+      id: currentDraftId,
+      projectId,
       runName,
       build,
       selectedIds,
@@ -415,8 +554,16 @@ export function TestRunsPage() {
       loggedBugCaseIds,
       loggedBugIds,
       startedAt,
-    })
-  }, [mode, projectId, runName, build, selectedIds, currentIndex, results, bugsLogged, loggedBugCaseIds, loggedBugIds, startedAt])
+      status: 'draft',
+      createdBy: firebaseUser?.uid || '',
+      createdByName: user || '',
+      updatedAt: new Date().toISOString(),
+    }
+    saveRunDraft(projectId, draftData)
+    if (isFirebaseEnabled && firebaseUser) {
+      saveRunDraftRemote(projectId, draftData)
+    }
+  }, [mode, projectId, currentDraftId, runName, build, selectedIds, currentIndex, results, bugsLogged, loggedBugCaseIds, loggedBugIds, startedAt, firebaseUser, user])
 
   // ── Keyboard shortcuts during execution ────────────────────────────────────
   useEffect(() => {
@@ -458,10 +605,10 @@ export function TestRunsPage() {
   }, [bugForm, currentCase, mode, selectedCases.length, updateTestCase, user])
 
   // Derive a human-readable draft age string for the banner
-  const draftAge = draft?.startedAt
-    ? new Date(draft.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const draftAge = activeDraft?.startedAt
+    ? new Date(activeDraft.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     : null
-  const draftExecutedCount = Object.values(draft?.results ?? {}).filter((r) => r.status !== 'Not Executed').length
+  const draftExecutedCount = Object.values(activeDraft?.results ?? {}).filter((r) => r.status !== 'Not Executed').length
 
   return (
     <>
@@ -470,15 +617,15 @@ export function TestRunsPage() {
         description="Select test cases, execute them, and save run history for release reporting."
       />
 
-      {mode === 'setup' && draft && (
+      {mode === 'setup' && activeDraft && (
         <div className="run-draft-banner">
           <div className="run-draft-banner-text">
             <strong>Unfinished run</strong>
             <span>
-              {draft.runName || 'Unnamed run'}
+              {activeDraft.runName || 'Unnamed run'}
               {draftAge ? ` • started ${draftAge}` : ''}
               {' • '}
-              {draft.selectedIds?.length ?? 0} case{(draft.selectedIds?.length ?? 0) !== 1 ? 's' : ''},
+              {activeDraft.selectedIds?.length ?? 0} case{(activeDraft.selectedIds?.length ?? 0) !== 1 ? 's' : ''},
               {' '}{draftExecutedCount} executed
             </span>
           </div>
@@ -616,6 +763,18 @@ export function TestRunsPage() {
               />
             </label>
 
+            {linkedBug && (
+              <div className="linked-bug-banner" style={{ marginTop: 12, padding: '10px 14px', background: '#fff5f5', border: '1px solid #fee2e2', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <span style={{ fontSize: '13px', color: '#991b1b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <BugIcon width={14} height={14} />
+                  Linked Bug: <strong>{linkedBug.sourceBugId || linkedBug.id.slice(0, 8).toUpperCase()} - {linkedBug.title}</strong>
+                </span>
+                <Link to={`/projects/${projectId}/bugs`} className="text-link" style={{ fontSize: '13px' }}>
+                  View tracker →
+                </Link>
+              </div>
+            )}
+
             <div className="run-status-actions" aria-label="Execution status">
               {TEST_STATUSES.filter((s) => s !== 'Not Executed').map((status) => (
                 <button
@@ -627,9 +786,29 @@ export function TestRunsPage() {
                   {status}
                 </button>
               ))}
-              <button className="secondary-button" type="button" onClick={openRunBug}>
-                + Log bug
-              </button>
+              {currentResult?.bugId ? (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
+                  <span className="status-pill status-pill--failed" style={{ fontSize: '12px', minHeight: 28, padding: '0 8px', display: 'inline-flex', alignItems: 'center' }}>Bug linked</span>
+                  <button className="secondary-button" type="button" onClick={() => {
+                    setResults((prev) => ({
+                      ...prev,
+                      [currentCase.id]: {
+                        ...prev[currentCase.id],
+                        bugId: undefined,
+                      }
+                    }))
+                    setTimeout(() => {
+                      openRunBug()
+                    }, 0)
+                  }}>
+                    Create another
+                  </button>
+                </div>
+              ) : (
+                <button className="secondary-button" type="button" onClick={openRunBug}>
+                  + Log bug
+                </button>
+              )}
             </div>
             <div className="shortcut-hints" aria-label="Keyboard shortcuts">
               <span>P Pass</span>

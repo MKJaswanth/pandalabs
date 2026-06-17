@@ -94,6 +94,14 @@ function AppShell() {
     }
   }, [firebaseUser, user, updateUser])
 
+  useEffect(() => {
+    if (isFirebaseEnabled && firebaseUser && user && !firebaseUser.isAnonymous) {
+      import('./utils/remoteStorage').then(({ syncUserProfileRemote }) => {
+        syncUserProfileRemote(firebaseUser, user)
+      })
+    }
+  }, [firebaseUser, user])
+
   // Firebase auth still resolving
   if (isFirebaseEnabled && loading) {
     return (
