@@ -32,10 +32,8 @@ function cleanRecord(record) {
   return JSON.parse(JSON.stringify(record))
 }
 
-// Writes are fire-and-forget from the hooks; without a .catch a transient
-// failure becomes an unhandled promise rejection. Log and move on — the local
-// cache already holds the change and the next snapshot reconciles.
 function logWriteError(err) {
+  setSyncStatus('error')
   console.error('[remoteStorage] Write failed:', err)
 }
 
@@ -72,9 +70,17 @@ function subscribe(pathParts, onChange, sortFn = byCreatedAtDesc) {
   )
 }
 
-function upsert(pathParts, item) {
+async function upsert(pathParts, item) {
   ensureFirebase()
-  return setDoc(doc(db, ...pathParts, item.id), cleanRecord(item), { merge: true }).catch(logWriteError)
+  setSyncStatus('syncing')
+  try {
+    await setDoc(doc(db, ...pathParts, item.id), cleanRecord(item), { merge: true })
+    setSyncStatus('synced')
+    return true
+  } catch (err) {
+    logWriteError(err)
+    return false
+  }
 }
 
 // Soft-delete: write a tombstone rather than removing the doc, so the deletion
@@ -82,11 +88,20 @@ function upsert(pathParts, item) {
 // deleteDoc would let other devices' local copies resurrect the record.
 function tombstone(pathParts, id) {
   ensureFirebase()
+  setSyncStatus('syncing')
   return setDoc(
-    doc(db, ...pathParts, id),
-    { deleted: true, deletedAt: new Date().toISOString() },
-    { merge: true },
-  ).catch(logWriteError)
+      doc(db, ...pathParts, id),
+      { deleted: true, deletedAt: new Date().toISOString() },
+      { merge: true },
+    )
+    .then(() => {
+      setSyncStatus('synced')
+      return true
+    })
+    .catch((err) => {
+      logWriteError(err)
+      return false
+    })
 }
 
 async function remove(pathParts, id) {
@@ -103,7 +118,7 @@ async function deleteCollection(pathParts) {
   await batch.commit()
 }
 
-// Path builders — resolved at call time so each call uses the current user's UID
+// Path builders — resolved at call time against the fixed shared workspace ID.
 const projectsPath    = ()           => [...workspacePath(), 'projects']
 const membersPath     = ()           => [...workspacePath(), 'teamMembers']
 const projectPath     = (projectId)  => [...projectsPath(), projectId]

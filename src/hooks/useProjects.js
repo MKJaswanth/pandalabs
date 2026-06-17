@@ -31,13 +31,13 @@ export function useProjects() {
     window.dispatchEvent(new Event(PROJECTS_CHANGED))
   }, [])
 
-  const addProject = useCallback((data) => {
+  const addProject = useCallback(async (data) => {
     const project = { id: newId(), createdAt: new Date().toISOString(), ...data }
     saveProject(project)
     setProjectsState(getProjects())
     notify()
-    if (remoteReady) saveProjectRemote(project)
-    return project
+    const remoteSaved = remoteReady ? await saveProjectRemote(project) : false
+    return { project, remoteSaved, remoteReady }
   }, [notify, remoteReady])
 
   const removeProject = useCallback((id) => {

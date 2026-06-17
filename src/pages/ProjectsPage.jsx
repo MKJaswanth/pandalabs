@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useConfirm } from '../context/useConfirm'
+import { useToast } from '../context/useToast'
 import { useProjects } from '../hooks/useProjects'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { getTestCases } from '../utils/storage'
@@ -28,8 +29,10 @@ export function ProjectsPage() {
   const { projects, addProject, removeProject } = useProjects()
   const { members } = useTeamMembers()
   const confirm = useConfirm()
+  const toast = useToast()
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState(blank)
+  const [saving, setSaving] = useState(false)
 
   const toggleMember = (id) =>
     setForm((f) => ({
@@ -39,12 +42,30 @@ export function ProjectsPage() {
         : [...f.memberIds, id],
     }))
 
-  const handleAdd = (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault()
-    if (!form.name.trim()) return
-    addProject({ name: form.name.trim(), description: form.description.trim(), memberIds: form.memberIds })
-    setForm(blank)
-    setShowAdd(false)
+    if (!form.name.trim() || saving) return
+    setSaving(true)
+    try {
+      const { remoteSaved, remoteReady } = await addProject({
+        name: form.name.trim(),
+        description: form.description.trim(),
+        memberIds: form.memberIds,
+      })
+
+      if (remoteReady && !remoteSaved) {
+        toast.error('Project saved in this browser, but Firebase sync failed. Check Firestore rules/network and try again.')
+      } else if (!remoteReady) {
+        toast.warning('Project saved locally only. Sign in with a real account and wait for cloud sync before creating shared projects.')
+      } else {
+        toast.success('Project created and synced to Firebase.')
+      }
+
+      setForm(blank)
+      setShowAdd(false)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -160,7 +181,9 @@ export function ProjectsPage() {
               <button type="button" className="secondary-button" onClick={() => { setShowAdd(false); setForm(blank) }}>
                 Cancel
               </button>
-              <button type="submit" className="primary-button">Create project</button>
+              <button type="submit" className="primary-button" disabled={saving}>
+                {saving ? 'Creating…' : 'Create project'}
+              </button>
             </div>
           </form>
         </Modal>
