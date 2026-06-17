@@ -419,8 +419,8 @@ export function BugTrackerPage() {
                 {pagedBugs.map((bug) => (
                   <tr key={bug.id}>
                     <td className="mono tc-id">{bug.sourceBugId || shortId(bug.id)}</td>
-                    <td>
-                      <button className="link-btn" onClick={() => openEdit(bug)}>{bug.title}</button>
+                    <td className="title-cell">
+                      <button className="link-btn" type="button" onClick={() => openEdit(bug)}>{bug.title}</button>
                       {bug.description && <p className="bug-desc">{bug.description}</p>}
                       {(bug.environment || bug.build) && (
                         <p className="bug-desc text-muted">
@@ -474,6 +474,68 @@ export function BugTrackerPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="mobile-card-list">
+            {pagedBugs.map((bug) => (
+              <div className="mobile-card" key={bug.id}>
+                <div className="mobile-card-header">
+                  <span className="mono tc-id">{bug.sourceBugId || shortId(bug.id)}</span>
+                  <div className="mobile-card-header-badges">
+                    <StatusPill tone={severityTone[bug.severity]}>{bug.severity}</StatusPill>
+                    <select
+                      className="inline-select"
+                      value={bug.status}
+                      aria-label="Bug status"
+                      onChange={(e) => handleInlineStatusChange(bug, e.target.value)}
+                    >
+                      {STATUSES.map((s) => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <h3 className="mobile-card-title">
+                  <button className="link-btn" type="button" onClick={() => openEdit(bug)}>{bug.title}</button>
+                </h3>
+                {bug.description && <p className="mobile-card-desc">{bug.description}</p>}
+                <div className="mobile-card-details">
+                  <div>
+                    <span>Module:</span>
+                    <strong>{bug.module || '—'}</strong>
+                  </div>
+                  <div>
+                    <span>Linked TC:</span>
+                    <strong>
+                      {bug.linkedTestCase ? (
+                        <Link
+                          className="linked-tc-title"
+                          to={`/projects/${projectId}/test-cases/${bug.linkedTestCase}`}
+                        >
+                          {tcTitle(bug.linkedTestCase) ?? 'Open test case'}
+                        </Link>
+                      ) : '—'}
+                    </strong>
+                  </div>
+                  {(bug.environment || bug.build) && (
+                    <div>
+                      <span>Env/Build:</span>
+                      <strong>{[bug.environment, bug.build].filter(Boolean).join(' · ')}</strong>
+                    </div>
+                  )}
+                </div>
+                <div className="mobile-card-actions">
+                  <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEdit(bug)}>
+                    Open & Edit
+                  </button>
+                  <button className="danger-button mobile-card-action-btn" type="button"
+                    onClick={async () => {
+                      const ok = await confirm({ title: 'Delete bug?', message: `"${bug.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
+                      if (ok) { removeBug(bug.id); toast.success('Bug deleted') }
+                    }}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
           <div className="table-pagination" aria-label="Table pagination">
             <div className="rows-per-page">

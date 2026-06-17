@@ -278,7 +278,7 @@ export function TestCasesPage() {
                       />
                     </td>
                     <td className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</td>
-                    <td>
+                    <td className="title-cell">
                       <Link to={`/projects/${projectId}/test-cases/${tc.id}`}>{tc.title}</Link>
                     </td>
                     <td>{tc.module || '—'}</td>
@@ -318,6 +318,63 @@ export function TestCasesPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="mobile-card-list">
+            {pagedCases.map((tc) => (
+              <div className="mobile-card" key={tc.id}>
+                <div className="mobile-card-header">
+                  <span className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
+                  <div className="mobile-card-header-badges">
+                    <span className={`priority-badge priority-${tc.priority?.toLowerCase()}`}>
+                      {tc.priority}
+                    </span>
+                    <select
+                      className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
+                      value={tc.status}
+                      aria-label="Status"
+                      onChange={(e) => updateTestCase(withHistory(
+                        { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                        historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
+                      ))}
+                    >
+                      {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <h3 className="mobile-card-title">
+                  <Link to={`/projects/${projectId}/test-cases/${tc.id}`}>{tc.title}</Link>
+                </h3>
+                <div className="mobile-card-details">
+                  <div>
+                    <span>Module:</span>
+                    <strong>{tc.module || '—'}</strong>
+                  </div>
+                  <div>
+                    <span>Assignee:</span>
+                    <strong>{tc.assignee || '—'}</strong>
+                  </div>
+                </div>
+                <div className="mobile-card-actions">
+                  <Link className="secondary-button mobile-card-action-btn" to={`/projects/${projectId}/test-cases/${tc.id}`}>
+                    Open
+                  </Link>
+                  <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEdit(tc)}>
+                    Edit
+                  </button>
+                  <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => cloneCase(tc)}>
+                    Clone
+                  </button>
+                  <button className="danger-button mobile-card-action-btn" type="button"
+                    onClick={async () => {
+                      const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
+                      if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
+                    }}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
           </>
         )}

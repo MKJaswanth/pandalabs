@@ -4,6 +4,7 @@ import { PassRing, Bar } from '../components/Charts'
 import { useProjects } from '../hooks/useProjects'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
 import { BarChartIcon, ShieldCheckIcon } from '../components/Icons'
+import { normalizeTestStatus } from '../utils/status'
 
 export function ReportsPage() {
   const { projects } = useProjects()
@@ -12,15 +13,15 @@ export function ReportsPage() {
     const tcs  = getTestCases(p.id)
     const bugs = getBugs(p.id)
     const runs = getTestRuns(p.id)
-    const passed   = tcs.filter((t) => t.status === 'Pass').length
-    const failed   = tcs.filter((t) => t.status === 'Fail').length
-    const blocker  = tcs.filter((t) => t.status === 'Blocker').length
-    const skipped  = tcs.filter((t) => t.status === 'Skipped').length
-    const pending  = tcs.filter((t) => t.status === 'Not Executed').length
-    const reported = tcs.filter((t) => t.status === 'Reported').length
-    const inProg   = tcs.filter((t) => t.status === 'Testing in Progress').length
-    const hold     = tcs.filter((t) => t.status === 'Hold').length
-    const needCl   = tcs.filter((t) => t.status === 'Need Clarification').length
+    const passed   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Pass').length
+    const failed   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Fail').length
+    const blocker  = tcs.filter((t) => normalizeTestStatus(t.status) === 'Blocker').length
+    const skipped  = tcs.filter((t) => normalizeTestStatus(t.status) === 'Skipped').length
+    const pending  = tcs.filter((t) => normalizeTestStatus(t.status) === 'Not Executed').length
+    const reported = tcs.filter((t) => normalizeTestStatus(t.status) === 'Reported').length
+    const inProg   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Testing in Progress').length
+    const hold     = tcs.filter((t) => normalizeTestStatus(t.status) === 'Hold').length
+    const needCl   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Need Clarification').length
     const passRate = tcs.length ? Math.round((passed / tcs.length) * 100) : 0
     const coverage = tcs.length ? Math.round(((tcs.length - pending) / tcs.length) * 100) : 0
     const openBugs = bugs.filter((b) => b.status !== 'Closed').length
@@ -49,7 +50,10 @@ export function ReportsPage() {
 
   const failingModules = projects
     .flatMap((project) => getTestCases(project.id).map((tc) => ({ ...tc, project })))
-    .filter((tc) => tc.status === 'Fail' || tc.status === 'Blocker')
+    .filter((tc) => {
+      const norm = normalizeTestStatus(tc.status)
+      return norm === 'Fail' || norm === 'Blocker'
+    })
     .reduce((items, tc) => {
       const mod = tc.module || 'Unassigned'
       const ex = items.find((i) => i.module === mod)

@@ -8,6 +8,7 @@ import { useTestCases } from '../hooks/useTestCases'
 import { useTestRuns } from '../hooks/useTestRuns'
 import { exportBugs, exportTestCases, exportTestRuns } from '../utils/export'
 import { BarChartIcon, DownloadIcon, PrintIcon } from '../components/Icons'
+import { normalizeTestStatus } from '../utils/status'
 
 export function ProjectReportsPage() {
   const { projectId } = useParams()
@@ -19,15 +20,15 @@ export function ProjectReportsPage() {
   const project = projects.find((p) => p.id === projectId)
   const projectName = project?.name ?? projectId
 
-  const passed          = testCases.filter((t) => t.status === 'Pass').length
-  const failed          = testCases.filter((t) => t.status === 'Fail').length
-  const blocker         = testCases.filter((t) => t.status === 'Blocker').length
-  const skipped         = testCases.filter((t) => t.status === 'Skipped').length
-  const pending         = testCases.filter((t) => t.status === 'Not Executed').length
-  const reported        = testCases.filter((t) => t.status === 'Reported').length
-  const inProgress      = testCases.filter((t) => t.status === 'Testing in Progress').length
-  const hold            = testCases.filter((t) => t.status === 'Hold').length
-  const needClarif      = testCases.filter((t) => t.status === 'Need Clarification').length
+  const passed          = testCases.filter((t) => normalizeTestStatus(t.status) === 'Pass').length
+  const failed          = testCases.filter((t) => normalizeTestStatus(t.status) === 'Fail').length
+  const blocker         = testCases.filter((t) => normalizeTestStatus(t.status) === 'Blocker').length
+  const skipped         = testCases.filter((t) => normalizeTestStatus(t.status) === 'Skipped').length
+  const pending         = testCases.filter((t) => normalizeTestStatus(t.status) === 'Not Executed').length
+  const reported        = testCases.filter((t) => normalizeTestStatus(t.status) === 'Reported').length
+  const inProgress      = testCases.filter((t) => normalizeTestStatus(t.status) === 'Testing in Progress').length
+  const hold            = testCases.filter((t) => normalizeTestStatus(t.status) === 'Hold').length
+  const needClarif      = testCases.filter((t) => normalizeTestStatus(t.status) === 'Need Clarification').length
   const total           = testCases.length
   const executed        = total - pending
   const coverage        = total ? Math.round((executed / total) * 100) : 0
@@ -43,10 +44,11 @@ export function ProjectReportsPage() {
     const mod = tc.module || 'Unassigned'
     if (!acc[mod]) acc[mod] = { total: 0, passed: 0, failed: 0, blocker: 0, pending: 0 }
     acc[mod].total++
-    if (tc.status === 'Pass') acc[mod].passed++
-    else if (tc.status === 'Fail') acc[mod].failed++
-    else if (tc.status === 'Blocker') acc[mod].blocker++
-    else if (tc.status === 'Not Executed') acc[mod].pending++
+    const norm = normalizeTestStatus(tc.status)
+    if (norm === 'Pass') acc[mod].passed++
+    else if (norm === 'Fail') acc[mod].failed++
+    else if (norm === 'Blocker') acc[mod].blocker++
+    else if (norm === 'Not Executed') acc[mod].pending++
     return acc
   }, {})
   const moduleStats = Object.entries(moduleMap).map(([mod, s]) => ({

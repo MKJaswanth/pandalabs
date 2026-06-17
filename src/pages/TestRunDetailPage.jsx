@@ -153,7 +153,7 @@ export function TestRunDetailPage() {
               <tbody>
                 {run.cases.map((tc, idx) => (
                   <tr key={tc.testCaseId || idx}>
-                    <td>{tc.title}</td>
+                    <td className="title-cell">{tc.title}</td>
                     <td>{tc.module || '-'}</td>
                     <td>{tc.priority || '-'}</td>
                     <td>
@@ -163,6 +163,13 @@ export function TestRunDetailPage() {
                     </td>
                     <td style={{ whiteSpace: 'normal', maxWidth: 300 }}>
                       {tc.actual || <span className="text-muted">Not recorded</span>}
+                      {tc.bugId && (
+                        <div style={{ marginTop: 6 }}>
+                          <Link to={`/projects/${projectId}/bugs`} className="text-link status-text--failed" style={{ fontSize: '0.85em', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+                            <BugIcon width={12} height={12} /> Bug linked
+                          </Link>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
