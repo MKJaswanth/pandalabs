@@ -2802,6 +2802,60 @@ button { font-family: inherit; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.app-loading-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.app-loading-text {
+  margin: 0;
+  color: var(--text-muted, #64748b);
+  font-size: 0.95rem;
+}
+
+/* Stack the conflict-recovery actions vertically, full width */
+.modal-footer--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+.modal-footer--stacked > button {
+  width: 100%;
+}
+
+/* Sync status badge */
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--page-bg);
+  color: var(--text-muted, #64748b);
+  white-space: nowrap;
+}
+.sync-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.sync-badge--synced  { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
+.sync-badge--syncing { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.sync-badge--syncing .sync-badge-dot { animation: spin 0.7s linear infinite; }
+.sync-badge--error   { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+.sync-badge--offline { color: #64748b; border-color: var(--border); background: var(--page-bg); }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* Firebase user photo */
 .user-pill-photo,
 .user-dropdown-photo {

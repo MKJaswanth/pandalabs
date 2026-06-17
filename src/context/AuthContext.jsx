@@ -12,6 +12,7 @@ import {
   updateProfile,
 } from 'firebase/auth'
 import { auth, isFirebaseEnabled } from '../utils/firebase'
+import { clearWorkspaceCache, setCurrentUser } from '../utils/storage'
 import { AuthContext } from './AuthContextCore'
 
 const googleProvider = new GoogleAuthProvider()
@@ -57,7 +58,13 @@ export function AuthProvider({ children }) {
 
   const signInAsGuest = () => signInAnonymously(auth)
 
-  const signOut = () => firebaseSignOut(auth)
+  const signOut = async () => {
+    await firebaseSignOut(auth)
+    // Clear the local cache + display name so the next sign-in starts from a
+    // clean Firebase load and never shows the previous session's data.
+    clearWorkspaceCache()
+    setCurrentUser('')
+  }
 
   return (
     <AuthContext.Provider value={{
