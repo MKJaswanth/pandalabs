@@ -8,7 +8,6 @@ import { useTestCases } from '../hooks/useTestCases'
 import { useTestRuns } from '../hooks/useTestRuns'
 import { exportBugs, exportTestCases, exportTestRuns } from '../utils/export'
 import { BarChartIcon, DownloadIcon, PrintIcon } from '../components/Icons'
-import { STATUS_TONE } from '../utils/status'
 
 export function ProjectReportsPage() {
   const { projectId } = useParams()

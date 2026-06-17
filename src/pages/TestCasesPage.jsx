@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { UploadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
+import { UploadIcon, DownloadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
 import { useSortable } from '../hooks/useSortable'
 import { Link, useParams } from 'react-router-dom'
 import { BulkUploadModal } from '../components/BulkUploadModal'
@@ -10,9 +10,11 @@ import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useProjects } from '../hooks/useProjects'
 import { useUser } from '../context/UserContext'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
+import { exportTestCases } from '../utils/export'
 
 function SortTh({ col, label, active, dir, onSort }) {
   const isActive = active === col
@@ -37,7 +39,9 @@ export function TestCasesPage() {
   const { projectId } = useParams()
   const { testCases, addTestCase, updateTestCase, removeTestCase } = useTestCases(projectId)
   const { members } = useTeamMembers()
+  const { projects } = useProjects()
   const { user } = useUser()
+  const projectName = projects.find((p) => p.id === projectId)?.name ?? projectId
   const confirm = useConfirm()
   const toast = useToast()
 
@@ -171,6 +175,14 @@ export function TestCasesPage() {
         description="Filter, review, and prepare cases for the next test run."
         action={
           <div className="page-actions-row">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => exportTestCases(visible, projectName)}
+              disabled={visible.length === 0}
+            >
+              <DownloadIcon width={14} height={14} /> Export
+            </button>
             <button className="secondary-button" type="button" onClick={() => setShowBulk(true)}>
               <UploadIcon width={14} height={14} /> Bulk upload
             </button>

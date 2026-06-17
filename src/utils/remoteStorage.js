@@ -31,6 +31,13 @@ function cleanRecord(record) {
   return JSON.parse(JSON.stringify(record))
 }
 
+// Writes are fire-and-forget from the hooks; without a .catch a transient
+// failure becomes an unhandled promise rejection. Log and move on — the local
+// cache already holds the change and the next snapshot reconciles.
+function logWriteError(err) {
+  console.error('[remoteStorage] Write failed:', err)
+}
+
 function byCreatedAtDesc(a, b) {
   return String(b.createdAt ?? b.date ?? '').localeCompare(String(a.createdAt ?? a.date ?? ''))
 }
@@ -47,16 +54,36 @@ export function allowSubscriptions()    { subscriptionsSuppressed = false }
 
 function subscribe(pathParts, onChange, sortFn = byCreatedAtDesc) {
   ensureFirebase()
-  return onSnapshot(collection(db, ...pathParts), (snapshot) => {
-    if (subscriptionsSuppressed) return
-    const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
-    onChange(sortFn ? rows.sort(sortFn) : rows)
-  })
+  return onSnapshot(
+    collection(db, ...pathParts),
+    (snapshot) => {
+      if (subscriptionsSuppressed) return
+      const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
+      onChange(sortFn ? rows.sort(sortFn) : rows)
+    },
+    (error) => {
+      // Without an error handler a permission/network failure silently kills
+      // the listener — the app looks "connected" while nothing ever syncs.
+      console.error(`[remoteStorage] Snapshot subscription failed for ${pathParts.join('/')}:`, error)
+    },
+  )
 }
 
 function upsert(pathParts, item) {
   ensureFirebase()
-  return setDoc(doc(db, ...pathParts, item.id), cleanRecord(item), { merge: true })
+  return setDoc(doc(db, ...pathParts, item.id), cleanRecord(item), { merge: true }).catch(logWriteError)
+}
+
+// Soft-delete: write a tombstone rather than removing the doc, so the deletion
+// propagates to every device through the normal snapshot/merge path. A hard
+// deleteDoc would let other devices' local copies resurrect the record.
+function tombstone(pathParts, id) {
+  ensureFirebase()
+  return setDoc(
+    doc(db, ...pathParts, id),
+    { deleted: true, deletedAt: new Date().toISOString() },
+    { merge: true },
+  ).catch(logWriteError)
 }
 
 async function remove(pathParts, id) {
@@ -84,18 +111,36 @@ const runsPath        = (projectId)  => [...projectPath(projectId), 'runs']
 export const subscribeProjects      = (onChange)             => subscribe(projectsPath(), onChange)
 export const saveProjectRemote      = (project)              => upsert(projectsPath(), project)
 export async function deleteProjectRemote(projectId) {
-  await Promise.all([
-    deleteCollection(testCasesPath(projectId)),
-    deleteCollection(bugsPath(projectId)),
-    deleteCollection(runsPath(projectId)),
-  ])
-  await remove(projectsPath(), projectId)
+  // Child collections are hard-deleted to reclaim space; the project doc itself
+  // is tombstoned so the deletion propagates to other devices (a hard delete
+  // would be re-added by their local merge). Called fire-and-forget, so errors
+  // are logged rather than left to reject unhandled.
+  try {
+    await Promise.all([
+      deleteCollection(testCasesPath(projectId)),
+      deleteCollection(bugsPath(projectId)),
+      deleteCollection(runsPath(projectId)),
+    ])
+    await tombstone(projectsPath(), projectId)
+  } catch (err) {
+    logWriteError(err)
+  }
 }
 
+// Full hard wipe — used by backup "replace" restore, which intentionally
+// removes everything (including tombstones) before writing fresh data.
 export async function clearWorkspaceRemote() {
   ensureFirebase()
   const projectsSnapshot = await getDocs(collection(db, ...projectsPath()))
-  await Promise.all(projectsSnapshot.docs.map((projectDoc) => deleteProjectRemote(projectDoc.id)))
+  await Promise.all(projectsSnapshot.docs.map(async (projectDoc) => {
+    const projectId = projectDoc.id
+    await Promise.all([
+      deleteCollection(testCasesPath(projectId)),
+      deleteCollection(bugsPath(projectId)),
+      deleteCollection(runsPath(projectId)),
+    ])
+    await remove(projectsPath(), projectId)
+  }))
   await deleteCollection(membersPath())
 }
 
@@ -103,15 +148,15 @@ export const subscribeTeamMembers   = (onChange)             => subscribe(member
   String(a.name ?? '').localeCompare(String(b.name ?? '')),
 )
 export const saveTeamMemberRemote   = (member)               => upsert(membersPath(), member)
-export const deleteTeamMemberRemote = (memberId)             => remove(membersPath(), memberId)
+export const deleteTeamMemberRemote = (memberId)             => tombstone(membersPath(), memberId)
 
 export const subscribeTestCases     = (projectId, onChange)  => subscribe(testCasesPath(projectId), onChange, byCreatedAtAsc)
 export const saveTestCaseRemote     = (projectId, testCase)  => upsert(testCasesPath(projectId), testCase)
-export const deleteTestCaseRemote   = (projectId, testCaseId) => remove(testCasesPath(projectId), testCaseId)
+export const deleteTestCaseRemote   = (projectId, testCaseId) => tombstone(testCasesPath(projectId), testCaseId)
 
 export const subscribeBugs          = (projectId, onChange)  => subscribe(bugsPath(projectId), onChange)
 export const saveBugRemote          = (projectId, bug)       => upsert(bugsPath(projectId), bug)
-export const deleteBugRemote        = (projectId, bugId)     => remove(bugsPath(projectId), bugId)
+export const deleteBugRemote        = (projectId, bugId)     => tombstone(bugsPath(projectId), bugId)
 
 export const subscribeTestRuns      = (projectId, onChange)  => subscribe(runsPath(projectId), onChange)
 export const saveTestRunRemote      = (projectId, run)       => upsert(runsPath(projectId), run)
