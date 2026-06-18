@@ -168,6 +168,7 @@ export function TestRunsPage() {
   const RUN_PAGE_SIZES = [10, 25, 100]
   const [runsPageSize, setRunsPageSize] = useState(10)
   const [runsPage, setRunsPage] = useState(1)
+  const [runSearch, setRunSearch] = useState('')
   const [casePageSize, setCasePageSize] = useState(25)
   const [casePage, setCasePage] = useState(1)
 
@@ -201,15 +202,35 @@ export function TestRunsPage() {
     status: results[tc.id]?.status ?? tc.status ?? 'Not Executed',
   }))
   const liveSummary = summarizeStatuses(resultItems)
-  // Recent runs, newest first, paginated. Order: source runs -> existing order
-  // (no search/sort UI on this list) -> pagination. currentPage is clamped so a
-  // deletion that shrinks the list snaps back into range automatically.
+  // Recent runs, newest first, searchable and paginated. currentPage is clamped
+  // so filtering or deletion that shrinks the list snaps back into range.
   const orderedRuns = [...runs].reverse()
-  const totalRuns = orderedRuns.length
+  const runSearchQuery = runSearch.trim().toLowerCase()
+  const filteredRuns = runSearchQuery
+    ? orderedRuns.filter((run) => {
+        const runDate = run.completedAt || run.date
+        const searchable = [
+          run.name,
+          run.build,
+          run.executedBy,
+          runDate,
+          runDate ? new Date(runDate).toLocaleString() : '',
+          run.total,
+          run.passed,
+          run.failed,
+          run.blocker,
+        ]
+          .filter((value) => value !== undefined && value !== null)
+          .join(' ')
+          .toLowerCase()
+        return searchable.includes(runSearchQuery)
+      })
+    : orderedRuns
+  const totalRuns = filteredRuns.length
   const runsTotalPages = Math.max(1, Math.ceil(totalRuns / runsPageSize))
   const runsCurrentPage = Math.min(runsPage, runsTotalPages)
   const runsStartIndex = (runsCurrentPage - 1) * runsPageSize
-  const paginatedRuns = orderedRuns.slice(runsStartIndex, runsStartIndex + runsPageSize)
+  const paginatedRuns = filteredRuns.slice(runsStartIndex, runsStartIndex + runsPageSize)
   const runsStartItem = totalRuns === 0 ? 0 : runsStartIndex + 1
   const runsEndItem = Math.min(runsStartIndex + runsPageSize, totalRuns)
 
@@ -1088,9 +1109,27 @@ export function TestRunsPage() {
         </section>
       )}
 
-      {mode === 'setup' && totalRuns > 0 && (
+      {mode === 'setup' && orderedRuns.length > 0 && (
         <section className="panel">
-          <div className="section-header"><h2>Recent runs</h2></div>
+          <div className="section-header">
+            <h2>Recent runs</h2>
+            <span className="section-count">{totalRuns} of {orderedRuns.length}</span>
+          </div>
+          <div className="toolbar run-history-toolbar">
+            <input
+              type="search"
+              value={runSearch}
+              onChange={(e) => {
+                setRunSearch(e.target.value)
+                setRunsPage(1)
+              }}
+              placeholder="Search runs..."
+              aria-label="Search test runs"
+            />
+            <span className="toolbar-info">
+              Search by run name, build, owner, date, or result count.
+            </span>
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -1105,7 +1144,13 @@ export function TestRunsPage() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedRuns.map((run) => (
+                {paginatedRuns.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>
+                      <span className="empty-table-message">No runs match your search.</span>
+                    </td>
+                  </tr>
+                ) : paginatedRuns.map((run) => (
                   <tr key={run.id}>
                     <td>{new Date(run.completedAt || run.date).toLocaleString()}</td>
                     <td>
@@ -1125,7 +1170,12 @@ export function TestRunsPage() {
           </div>
 
           <div className="mobile-card-list">
-            {paginatedRuns.map((run) => {
+            {paginatedRuns.length === 0 ? (
+              <article className="mobile-card">
+                <h3 className="mobile-card-title">No runs found</h3>
+                <p className="muted-text">Try a different run name, build, owner, or date.</p>
+              </article>
+            ) : paginatedRuns.map((run) => {
               const rate = run.total ? Math.round((run.passed / run.total) * 100) : 0
               const tone = rate >= 70 ? 'passed' : rate >= 50 ? 'pending' : 'failed'
               return (

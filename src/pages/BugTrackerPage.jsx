@@ -35,6 +35,7 @@ const STATUSES = ['Open', 'In review', 'Closed']
 const RETEST_STATUSES = ['Not Retested', 'Passed', 'Failed']
 
 const severityTone = { Critical: 'failed', Major: 'pending', Minor: 'passed' }
+const bugStatusTone = { Open: 'failed', 'In review': 'pending', Closed: 'passed' }
 const priorityClass = { High: 'priority-high', Medium: 'priority-med', Low: 'priority-low' }
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -500,7 +501,7 @@ export function BugTrackerPage() {
                     </td>
                     <td>
                       <select
-                        className="inline-select status-select status-select--neutral"
+                        className={`inline-select status-select status-select--${bugStatusTone[bug.status] || 'neutral'}`}
                         value={bug.status}
                         aria-label="Bug status"
                         onChange={(e) => handleInlineStatusChange(bug, e.target.value)}

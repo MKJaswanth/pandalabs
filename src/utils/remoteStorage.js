@@ -15,6 +15,7 @@ import { db, defaultWorkspaceId, isFirebaseEnabled, auth } from './firebase'
 import { setSyncStatus } from './syncStatus'
 import { newId } from './id'
 
+const ACTIVITY_HISTORY_LIMIT = 1000
 
 // Resolve workspace ID at call time. QA Lab is a shared team workspace, so
 // the configured workspace ID must be stable across signed-in users.
@@ -258,7 +259,7 @@ export const subscribeActivity = (onChange) => {
   const q = query(
     collection(db, ...workspacePath(), 'activity'),
     orderBy('createdAt', 'desc'),
-    limit(200)
+    limit(ACTIVITY_HISTORY_LIMIT)
   )
   return onSnapshot(
     q,
@@ -283,4 +284,3 @@ export const saveRunDraftRemote = (projectId, draft) =>
 
 export const deleteRunDraftRemote = (projectId, draftId) =>
   tombstone([...projectPath(projectId), 'runDrafts'], draftId)
-

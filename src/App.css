@@ -605,11 +605,12 @@ textarea:focus {
   max-width: 240px;
 }
 
-.toolbar select {
+.toolbar select,
+.toolbar input[type="date"] {
   width: auto;
   min-width: 110px;
 }
-.toolbar select.filter-active {
+.toolbar .filter-active {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
@@ -919,13 +920,14 @@ tbody tr:hover {
 .tc-table {
   table-layout: fixed;
   width: 100%;
+  min-width: 1120px;
 }
 .tc-col-check    { width: 40px; }
 .tc-col-id       { width: 92px; }
 .tc-col-title    { width: auto; }
 .tc-col-module   { width: 140px; }
-.tc-col-priority { width: 108px; }
-.tc-col-status   { width: 152px; }
+.tc-col-priority { width: 124px; }
+.tc-col-status   { width: 172px; }
 .tc-col-assignee { width: 132px; }
 .tc-col-actions  { width: 104px; }
 
@@ -940,20 +942,24 @@ tbody tr:hover {
 /* Keep pills/selects from stretching or clipping inside fixed-width columns. */
 .tc-table .priority-badge { white-space: nowrap; }
 .tc-table .inline-select,
-.tc-table .status-select { max-width: 100%; }
+.tc-table .status-select {
+  width: 100%;
+  max-width: 100%;
+}
 
 /* Bug Tracker table — fixed layout keeps column widths stable after sorting.
    Mirrors tc-table approach but with bug-specific column widths. */
 .bug-table {
   table-layout: fixed;
   width: 100%;
+  min-width: 1180px;
 }
 .bug-col-id       { width: 96px; }
 .bug-col-title    { width: auto; }
 .bug-col-module   { width: 112px; }
-.bug-col-severity { width: 96px; }
-.bug-col-priority { width: 92px; }
-.bug-col-status   { width: 118px; }
+.bug-col-severity { width: 116px; }
+.bug-col-priority { width: 112px; }
+.bug-col-status   { width: 132px; }
 .bug-col-linked   { width: 190px; }
 .bug-col-actions  { width: 54px; }
 
@@ -966,7 +972,10 @@ tbody tr:hover {
 .bug-table td.row-actions { vertical-align: middle; }
 .bug-table .priority-badge { white-space: nowrap; }
 .bug-table .inline-select,
-.bug-table .status-select { max-width: 100%; }
+.bug-table .status-select {
+  width: 100%;
+  max-width: 100%;
+}
 
 .inline-select {
   height: 26px;
@@ -2447,6 +2456,23 @@ button { font-family: inherit; }
 .status-select--blocker { background: #fbe3e3; color: #7f1d1d; font-weight: 700; }
 .status-select--neutral { background: var(--soft-bg); color: var(--text-muted); border-color: var(--border); }
 
+.status-select.priority-high {
+  background: #fff1f1;
+  color: #9f1d1d;
+  border-color: #f3b8b8;
+}
+.status-select.priority-med,
+.status-select.priority-medium {
+  background: #fff7e0;
+  color: #855800;
+  border-color: #f1d48b;
+}
+.status-select.priority-low {
+  background: #eef9f1;
+  color: #176534;
+  border-color: #b9e4c4;
+}
+
 /* Utility classes */
 .metric-passed { color: var(--success); }
 .metric-failed  { color: var(--danger); }
@@ -3090,7 +3116,8 @@ button { font-family: inherit; }
     width: 100%;
   }
 
-  .toolbar select {
+  .toolbar select,
+  .toolbar input[type="date"] {
     width: 100%;
     min-width: 0;
   }
