@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AttachmentField } from '../components/AttachmentField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { CheckIcon, BugIcon } from '../components/Icons'
+import { CheckIcon, BugIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
 import { useUser } from '../context/UserContext'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
@@ -146,6 +146,13 @@ export function TestRunsPage() {
   const [build, setBuild] = useState('')
   const [selectedIds, setSelectedIds] = useState(() => testCases.map((tc) => tc.id))
   const [currentIndex, setCurrentIndex] = useState(0)
+  const activeCaseRef = useRef(null)
+
+  useEffect(() => {
+    if (activeCaseRef.current) {
+      activeCaseRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [currentIndex])
   const [results, setResults] = useState({})
   const [savedRun, setSavedRun] = useState(null)
   const [bugForm, setBugForm] = useState(null)
@@ -155,6 +162,14 @@ export function TestRunsPage() {
   // track IDs of bugs logged manually during execution
   const [loggedBugIds, setLoggedBugIds] = useState([])
   const [startedAt, setStartedAt] = useState(null)
+
+  // Pagination (recent runs + the case picker) to keep the page from becoming
+  // one long scroll when a project has lots of runs or cases.
+  const RUN_PAGE_SIZES = [10, 25, 100]
+  const [runsPageSize, setRunsPageSize] = useState(10)
+  const [runsPage, setRunsPage] = useState(1)
+  const [casePageSize, setCasePageSize] = useState(25)
+  const [casePage, setCasePage] = useState(1)
 
   const sortedTestCases = useMemo(
     () => [...testCases].sort((a, b) => {
@@ -186,7 +201,27 @@ export function TestRunsPage() {
     status: results[tc.id]?.status ?? tc.status ?? 'Not Executed',
   }))
   const liveSummary = summarizeStatuses(resultItems)
-  const latestRuns = [...runs].reverse().slice(0, 5)
+  // Recent runs, newest first, paginated. Order: source runs -> existing order
+  // (no search/sort UI on this list) -> pagination. currentPage is clamped so a
+  // deletion that shrinks the list snaps back into range automatically.
+  const orderedRuns = [...runs].reverse()
+  const totalRuns = orderedRuns.length
+  const runsTotalPages = Math.max(1, Math.ceil(totalRuns / runsPageSize))
+  const runsCurrentPage = Math.min(runsPage, runsTotalPages)
+  const runsStartIndex = (runsCurrentPage - 1) * runsPageSize
+  const paginatedRuns = orderedRuns.slice(runsStartIndex, runsStartIndex + runsPageSize)
+  const runsStartItem = totalRuns === 0 ? 0 : runsStartIndex + 1
+  const runsEndItem = Math.min(runsStartIndex + runsPageSize, totalRuns)
+
+  // Case-picker pagination (run setup). Selection (Select all / Clear / checked
+  // ids) still operates on the full list, not just the visible page.
+  const caseTotal = sortedTestCases.length
+  const caseTotalPages = Math.max(1, Math.ceil(caseTotal / casePageSize))
+  const caseCurrentPage = Math.min(casePage, caseTotalPages)
+  const caseStartIndex = (caseCurrentPage - 1) * casePageSize
+  const paginatedCases = sortedTestCases.slice(caseStartIndex, caseStartIndex + casePageSize)
+  const caseStartItem = caseTotal === 0 ? 0 : caseStartIndex + 1
+  const caseEndItem = Math.min(caseStartIndex + casePageSize, caseTotal)
   const completedCount = selectedCases.filter((tc) => {
     const status = results[tc.id]?.status ?? tc.status ?? 'Not Executed'
     return status !== 'Not Executed'
@@ -674,7 +709,7 @@ export function TestRunsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedTestCases.map((tc) => (
+                  {paginatedCases.map((tc) => (
                     <tr key={tc.id}>
                       <td>
                         <input
@@ -708,6 +743,91 @@ export function TestRunsPage() {
               </table>
             </div>
           )}
+
+          {caseTotal > 0 && (
+            <div className="table-pagination" aria-label="Case pagination">
+              <div className="rows-per-page">
+                <span>Rows</span>
+                <select
+                  aria-label="Rows per page"
+                  value={casePageSize}
+                  onChange={(e) => {
+                    setCasePageSize(Number(e.target.value))
+                    setCasePage(1)
+                  }}
+                >
+                  {RUN_PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+              </div>
+              <span className="pagination-summary">
+                {caseStartItem}-{caseEndItem} of {caseTotal}
+              </span>
+              <div className="pagination-actions">
+                <button
+                  className="secondary-button icon-button"
+                  type="button"
+                  aria-label="Previous page"
+                  disabled={caseCurrentPage === 1}
+                  onClick={() => setCasePage(Math.max(1, caseCurrentPage - 1))}
+                >
+                  <ChevronLeftIcon width={14} height={14} />
+                </button>
+                <span className="page-indicator">{caseCurrentPage} / {caseTotalPages}</span>
+                <button
+                  className="secondary-button icon-button"
+                  type="button"
+                  aria-label="Next page"
+                  disabled={caseCurrentPage === caseTotalPages}
+                  onClick={() => setCasePage(Math.min(caseTotalPages, caseCurrentPage + 1))}
+                >
+                  <ChevronRightIcon width={14} height={14} />
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="mobile-card-list">
+            {paginatedCases.map((tc) => (
+              <div className="mobile-card" key={tc.id}>
+                <div className="mobile-card-header">
+                  <label className="mobile-card-select-label">
+                    <input
+                      className="row-checkbox"
+                      type="checkbox"
+                      aria-label={`Select ${tc.title}`}
+                      checked={selectedIds.includes(tc.id)}
+                      onChange={() => toggleCase(tc.id)}
+                    />
+                    <span className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
+                  </label>
+                  <div className="mobile-card-header-badges">
+                    <span className={`priority-badge priority-${tc.priority?.toLowerCase()}`}>{tc.priority}</span>
+                    <select
+                      className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
+                      value={tc.status}
+                      aria-label={`Status for ${tc.title}`}
+                      onChange={(e) => updateTestCase(withHistory(
+                        { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                        historyEntry('status', user, `Status changed to ${e.target.value}`, tc.status, e.target.value),
+                      ))}
+                    >
+                      {TEST_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <h3 className="mobile-card-title">{tc.title}</h3>
+                <div className="mobile-card-details">
+                  <div>
+                    <span>Module:</span>
+                    <strong>{tc.module || '—'}</strong>
+                  </div>
+                  <div>
+                    <span>Assignee:</span>
+                    <strong>{tc.assignee || '—'}</strong>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -873,6 +993,7 @@ export function TestRunsPage() {
                   return (
                     <button
                       key={tc.id}
+                      ref={index === currentIndex ? activeCaseRef : null}
                       type="button"
                       className={index === currentIndex ? 'active' : ''}
                       onClick={() => setCurrentIndex(index)}
@@ -941,9 +1062,13 @@ export function TestRunsPage() {
           {savedRun.failureModules?.length > 0 && (
             <div className="run-complete-insights">
               <h3>Needs attention</h3>
-              {savedRun.failureModules.slice(0, 4).map((item) => (
-                <span key={item.module}>{item.module}: {item.count}</span>
-              ))}
+              <div className="run-complete-insight-list">
+                {savedRun.failureModules.slice(0, 4).map((item) => (
+                  <span key={item.module} className="run-insight-chip">
+                    <strong>{item.module}</strong>: {item.count}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
           <div className="run-nav-actions">
@@ -963,7 +1088,7 @@ export function TestRunsPage() {
         </section>
       )}
 
-      {mode === 'setup' && latestRuns.length > 0 && (
+      {mode === 'setup' && totalRuns > 0 && (
         <section className="panel">
           <div className="section-header"><h2>Recent runs</h2></div>
           <div className="table-wrap">
@@ -980,7 +1105,7 @@ export function TestRunsPage() {
                 </tr>
               </thead>
               <tbody>
-                {latestRuns.map((run) => (
+                {paginatedRuns.map((run) => (
                   <tr key={run.id}>
                     <td>{new Date(run.completedAt || run.date).toLocaleString()}</td>
                     <td>
@@ -997,6 +1122,88 @@ export function TestRunsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="mobile-card-list">
+            {paginatedRuns.map((run) => {
+              const rate = run.total ? Math.round((run.passed / run.total) * 100) : 0
+              const tone = rate >= 70 ? 'passed' : rate >= 50 ? 'pending' : 'failed'
+              return (
+                <article className="mobile-card" key={run.id}>
+                  <div className="mobile-card-header">
+                    <span className="mono tc-id">{new Date(run.completedAt || run.date).toLocaleString()}</span>
+                    <div className="mobile-card-header-badges">
+                      <span className={`status-pill status-pill--${tone}`}>{rate}% pass</span>
+                    </div>
+                  </div>
+                  <h3 className="mobile-card-title">
+                    <Link to={`/projects/${projectId}/test-runs/${run.id}`}>{run.name || 'Test run'}</Link>
+                  </h3>
+                  <div className="mobile-card-details">
+                    <div>
+                      <span>Total:</span>
+                      <strong>{run.total}</strong>
+                    </div>
+                    <div>
+                      <span>Passed:</span>
+                      <strong className="metric-passed">{run.passed}</strong>
+                    </div>
+                    <div>
+                      <span>Failed:</span>
+                      <strong className="metric-failed">{run.failed}</strong>
+                    </div>
+                    <div>
+                      <span>Blocked:</span>
+                      <strong>{run.blocker ?? 0}</strong>
+                    </div>
+                    <div>
+                      <span>Executed by:</span>
+                      <strong>{run.executedBy || '—'}</strong>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+
+          <div className="table-pagination" aria-label="Run pagination">
+            <div className="rows-per-page">
+              <span>Rows</span>
+              <select
+                aria-label="Rows per page"
+                value={runsPageSize}
+                onChange={(e) => {
+                  setRunsPageSize(Number(e.target.value))
+                  setRunsPage(1)
+                }}
+              >
+                {RUN_PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </div>
+            <span className="pagination-summary">
+              {runsStartItem}-{runsEndItem} of {totalRuns}
+            </span>
+            <div className="pagination-actions">
+              <button
+                className="secondary-button icon-button"
+                type="button"
+                aria-label="Previous page"
+                disabled={runsCurrentPage === 1}
+                onClick={() => setRunsPage(Math.max(1, runsCurrentPage - 1))}
+              >
+                <ChevronLeftIcon width={14} height={14} />
+              </button>
+              <span className="page-indicator">{runsCurrentPage} / {runsTotalPages}</span>
+              <button
+                className="secondary-button icon-button"
+                type="button"
+                aria-label="Next page"
+                disabled={runsCurrentPage === runsTotalPages}
+                onClick={() => setRunsPage(Math.min(runsTotalPages, runsCurrentPage + 1))}
+              >
+                <ChevronRightIcon width={14} height={14} />
+              </button>
+            </div>
           </div>
         </section>
       )}

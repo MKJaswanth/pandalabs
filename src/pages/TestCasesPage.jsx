@@ -15,6 +15,7 @@ import { useUser } from '../context/UserContext'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
 import { exportTestCases } from '../utils/export'
+import { addActivity } from '../utils/activity'
 
 function SortTh({ col, label, active, dir, onSort }) {
   const isActive = active === col
@@ -37,7 +38,7 @@ const blankForm = () => ({
 
 export function TestCasesPage() {
   const { projectId } = useParams()
-  const { testCases, addTestCase, updateTestCase, removeTestCase } = useTestCases(projectId)
+  const { testCases, addTestCase, updateTestCase, removeTestCase, removeTestCases } = useTestCases(projectId)
   const { members } = useTeamMembers()
   const { projects } = useProjects()
   const { user } = useUser()
@@ -132,6 +133,33 @@ export function TestCasesPage() {
         historyEntry('status_change', user, `Status changed from ${tc.status} to ${bulkStatus}`, tc.status, bulkStatus),
       )))
     setSelectedIds([])
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return
+    const ok = await confirm({
+      title: 'Delete selected test cases?',
+      message: `Are you sure you want to permanently remove the ${selectedIds.length} selected test cases? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (ok) {
+      const count = selectedIds.length
+      const deletedIds = [...selectedIds]
+      removeTestCases(deletedIds)
+      setSelectedIds([])
+      toast.success(`${count} test cases deleted`)
+      await addActivity({
+        entityType: 'test_case',
+        action: 'deleted',
+        title: `Deleted ${count} selected test cases`,
+        projectId,
+        metadata: {
+          deletedIds,
+          count,
+        },
+      })
+    }
   }
 
   const cloneCase = (tc) => {
@@ -242,9 +270,22 @@ export function TestCasesPage() {
             <button className="secondary-button" type="button" disabled={selectedIds.length === 0} onClick={applyBulkStatus}>
               Mark selected
             </button>
+            <button className="danger-button" type="button" disabled={selectedIds.length === 0} onClick={handleBulkDelete}>
+              Delete selected
+            </button>
           </div>
           <div className="table-wrap">
-            <table>
+            <table className="tc-table">
+              <colgroup>
+                <col className="tc-col-check" />
+                <col className="tc-col-id" />
+                <col className="tc-col-title" />
+                <col className="tc-col-module" />
+                <col className="tc-col-priority" />
+                <col className="tc-col-status" />
+                <col className="tc-col-assignee" />
+                <col className="tc-col-actions" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>
@@ -283,9 +324,17 @@ export function TestCasesPage() {
                     </td>
                     <td>{tc.module || '—'}</td>
                     <td>
-                      <span className={`priority-badge priority-${tc.priority?.toLowerCase()}`}>
-                        {tc.priority}
-                      </span>
+                      <select
+                        className={`inline-select status-select priority-${(tc.priority || 'Med').toLowerCase()}`}
+                        value={tc.priority || 'Med'}
+                        aria-label="Priority"
+                        onChange={(e) => updateTestCase(withHistory(
+                          { ...tc, priority: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                          historyEntry('priority_change', user, `Priority changed from ${tc.priority} to ${e.target.value}`, tc.priority, e.target.value),
+                        ))}
+                      >
+                        {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                      </select>
                     </td>
                     <td>
                       <select
@@ -326,9 +375,17 @@ export function TestCasesPage() {
                 <div className="mobile-card-header">
                   <span className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
                   <div className="mobile-card-header-badges">
-                    <span className={`priority-badge priority-${tc.priority?.toLowerCase()}`}>
-                      {tc.priority}
-                    </span>
+                    <select
+                      className={`inline-select status-select priority-${(tc.priority || 'Med').toLowerCase()}`}
+                      value={tc.priority || 'Med'}
+                      aria-label="Priority"
+                      onChange={(e) => updateTestCase(withHistory(
+                        { ...tc, priority: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                        historyEntry('priority_change', user, `Priority changed from ${tc.priority} to ${e.target.value}`, tc.priority, e.target.value),
+                      ))}
+                    >
+                      {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                    </select>
                     <select
                       className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
                       value={tc.status}

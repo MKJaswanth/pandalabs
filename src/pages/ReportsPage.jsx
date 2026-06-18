@@ -1,175 +1,435 @@
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
-import { PassRing, Bar } from '../components/Charts'
 import { useProjects } from '../hooks/useProjects'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
-import { BarChartIcon, ShieldCheckIcon } from '../components/Icons'
 import { normalizeTestStatus } from '../utils/status'
+import { getGlobalReportMetrics, isOpenBug } from '../utils/reportMetrics'
+
+const STALE_DAYS = 14
+
+const formatRunDate = (dateValue) => {
+  if (!dateValue) return ''
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString()
+}
+
+const plural = (count, singular, pluralLabel = `${singular}s`) =>
+  `${count} ${count === 1 ? singular : pluralLabel}`
 
 export function ReportsPage() {
   const { projects } = useProjects()
+  const [nowTs] = useState(() => Date.now())
 
-  const rows = projects.map((p) => {
-    const tcs  = getTestCases(p.id)
-    const bugs = getBugs(p.id)
-    const runs = getTestRuns(p.id)
-    const passed   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Pass').length
-    const failed   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Fail').length
-    const blocker  = tcs.filter((t) => normalizeTestStatus(t.status) === 'Blocker').length
-    const skipped  = tcs.filter((t) => normalizeTestStatus(t.status) === 'Skipped').length
-    const pending  = tcs.filter((t) => normalizeTestStatus(t.status) === 'Not Executed').length
-    const reported = tcs.filter((t) => normalizeTestStatus(t.status) === 'Reported').length
-    const inProg   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Testing in Progress').length
-    const hold     = tcs.filter((t) => normalizeTestStatus(t.status) === 'Hold').length
-    const needCl   = tcs.filter((t) => normalizeTestStatus(t.status) === 'Need Clarification').length
-    const passRate = tcs.length ? Math.round((passed / tcs.length) * 100) : 0
-    const coverage = tcs.length ? Math.round(((tcs.length - pending) / tcs.length) * 100) : 0
-    const openBugs = bugs.filter((b) => b.status !== 'Closed').length
-    return { ...p, total: tcs.length, passed, failed, blocker, skipped, pending, reported, inProg, hold, needCl, passRate, coverage, openBugs, totalRuns: runs.length }
+  const {
+    rows,
+    totals,
+    globalPassRate: passRate,
+    globalCoverage: coverage,
+    overallReadiness
+  } = getGlobalReportMetrics({ projects, getTestCases, getBugs, getTestRuns })
+
+  const executed = totals.total - totals.pending
+  const readyCount = rows.filter((r) => r.readiness.label === 'Ready').length
+  const staleCount = rows.filter((r) => r.total > 0 && r.noRecentRun).length
+
+  // Build moduleRisk
+  const moduleRisk = {}
+  projects.forEach((p) => {
+    const pCases = getTestCases(p.id)
+    const pBugs = getBugs(p.id).filter(isOpenBug)
+
+    // Collect all modules referenced by failing cases or open bugs
+    const modules = new Set()
+    pCases.forEach((t) => {
+      const status = normalizeTestStatus(t.status)
+      if (status === 'Fail' || status === 'Blocker') {
+        modules.add(t.module || 'Unassigned')
+      }
+    })
+    pBugs.forEach((b) => {
+      modules.add(b.module || 'Unassigned')
+    })
+
+    modules.forEach((mod) => {
+      if (!moduleRisk[mod]) {
+        moduleRisk[mod] = {
+          module: mod,
+          score: 0,
+          highestSeverity: 'Minor',
+          highestPriority: 'Low',
+          failures: 0,
+          blockers: 0,
+          criticalBugs: 0,
+          majorBugs: 0,
+          minorBugs: 0
+        }
+      }
+
+      const modInfo = moduleRisk[mod]
+
+      // Evaluate failing cases in this module
+      pCases.forEach((t) => {
+        if ((t.module || 'Unassigned') === mod) {
+          const status = normalizeTestStatus(t.status)
+          if (status === 'Fail' || status === 'Blocker') {
+            const weight = status === 'Blocker' ? 30 : 20
+            if (status === 'Blocker') {
+              modInfo.blockers++
+              modInfo.highestSeverity = 'Critical'
+            } else {
+              modInfo.failures++
+            }
+
+            const priority = String(t.priority || 'Medium').trim().toLowerCase()
+            let prioMult = 1.0
+            if (priority === 'high') {
+              prioMult = 1.5
+              if (modInfo.highestPriority !== 'High') modInfo.highestPriority = 'High'
+            } else if (priority === 'low') {
+              prioMult = 0.5
+            } else {
+              if (modInfo.highestPriority === 'Low') modInfo.highestPriority = 'Medium'
+            }
+
+            modInfo.score += weight * prioMult
+          }
+        }
+      })
+
+      // Evaluate open bugs in this module
+      pBugs.forEach((b) => {
+        if ((b.module || 'Unassigned') === mod) {
+          let weight = 10
+          const sev = String(b.severity || 'Minor').trim().toLowerCase()
+          if (sev === 'critical') {
+            weight = 30
+            modInfo.criticalBugs++
+            modInfo.highestSeverity = 'Critical'
+          } else if (sev === 'major') {
+            weight = 20
+            modInfo.majorBugs++
+            if (modInfo.highestSeverity !== 'Critical') modInfo.highestSeverity = 'Major'
+          } else {
+            modInfo.minorBugs++
+            if (modInfo.highestSeverity !== 'Critical' && modInfo.highestSeverity !== 'Major') {
+              modInfo.highestSeverity = 'Minor'
+            }
+          }
+
+          const priority = String(b.priority || 'Medium').trim().toLowerCase()
+          let prioMult = 1.0
+          if (priority === 'high') {
+            prioMult = 1.5
+            if (modInfo.highestPriority !== 'High') modInfo.highestPriority = 'High'
+          } else if (priority === 'low') {
+            prioMult = 0.5
+          } else {
+            if (modInfo.highestPriority === 'Low') modInfo.highestPriority = 'Medium'
+          }
+
+          modInfo.score += weight * prioMult
+        }
+      })
+    })
   })
 
-  const totals = rows.reduce(
-    (acc, r) => ({
-      total: acc.total + r.total,
-      passed: acc.passed + r.passed,
-      failed: acc.failed + r.failed,
-      blocker: acc.blocker + r.blocker,
-      skipped: acc.skipped + r.skipped,
-      pending: acc.pending + r.pending,
-      reported: acc.reported + r.reported,
-      inProg: acc.inProg + r.inProg,
-      hold: acc.hold + r.hold,
-      needCl: acc.needCl + r.needCl,
-      openBugs: acc.openBugs + r.openBugs,
-      totalRuns: acc.totalRuns + r.totalRuns,
-    }),
-    { total: 0, passed: 0, failed: 0, blocker: 0, skipped: 0, pending: 0, reported: 0, inProg: 0, hold: 0, needCl: 0, openBugs: 0, totalRuns: 0 }
-  )
-  const globalPassRate = totals.total ? Math.round((totals.passed / totals.total) * 100) : 0
-  const globalCoverage = totals.total ? Math.round(((totals.total - totals.pending) / totals.total) * 100) : 0
+  const riskAreas = Object.values(moduleRisk)
+    .map((m) => {
+      let tone = 'neutral'
+      if (m.highestSeverity === 'Critical') tone = 'failed'
+      else if (m.highestSeverity === 'Major') tone = 'pending'
 
-  const failingModules = projects
-    .flatMap((project) => getTestCases(project.id).map((tc) => ({ ...tc, project })))
-    .filter((tc) => {
-      const norm = normalizeTestStatus(tc.status)
-      return norm === 'Fail' || norm === 'Blocker'
+      const parts = []
+      if (m.blockers > 0) parts.push(`${m.blockers} blocker${m.blockers !== 1 ? 's' : ''}`)
+      if (m.failures > 0) parts.push(`${m.failures} fail${m.failures !== 1 ? 's' : ''}`)
+      const bugsCount = m.criticalBugs + m.majorBugs + m.minorBugs
+      if (bugsCount > 0) parts.push(`${bugsCount} bug${bugsCount !== 1 ? 's' : ''}`)
+
+      return {
+        ...m,
+        tone,
+        details: parts.join(' · ') || '1 issue'
+      }
     })
-    .reduce((items, tc) => {
-      const mod = tc.module || 'Unassigned'
-      const ex = items.find((i) => i.module === mod)
-      if (ex) { ex.count++; ex.projects.add(tc.project.name) }
-      else items.push({ module: mod, count: 1, projects: new Set([tc.project.name]) })
-      return items
-    }, [])
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
 
-  const globalInsights = []
-  if (totals.total > 0) {
-    if (totals.blocker > 0) globalInsights.push({ type: 'danger',  title: 'Blockers Alert', text: `${totals.blocker} blocker case${totals.blocker !== 1 ? 's' : ''} active across the portfolio. Resolve before release.` })
-    if (totals.failed > 0)  globalInsights.push({ type: 'warning', title: 'Failing Cases',  text: `${totals.failed} failing case${totals.failed !== 1 ? 's' : ''} detected. Examine top failing modules for regressions.` })
-    if (totals.openBugs > 0) globalInsights.push({ type: 'info',   title: 'Open Bug Backlog', text: `${totals.openBugs} unresolved bug${totals.openBugs !== 1 ? 's' : ''} across the workspace. Review priorities in the bug tracker.` })
-    if (globalInsights.length === 0) globalInsights.push({ type: 'success', title: 'Portfolio Healthy', text: 'All projects report healthy metrics: zero active blockers and zero unresolved defects.' })
+  const riskMaxScore = riskAreas[0]?.score || 0
+
+  // ── Quality signals (the scan layer a QA lead reads first) ─────────────
+  const signals = [
+    {
+      key: 'coverage',
+      label: 'Test coverage',
+      value: `${coverage}%`,
+      tone: coverage >= 90 ? 'passed' : coverage >= 60 ? 'pending' : 'failed',
+      sub: `${executed} of ${totals.total} executed · ${totals.pending} not run`,
+    },
+    {
+      key: 'defects',
+      label: 'Open defects',
+      value: totals.openBugs,
+      tone: totals.critical > 0 ? 'failed' : totals.openBugs > 0 ? 'pending' : 'passed',
+      severities: [
+        { label: 'Critical', value: totals.critical, tone: 'critical' },
+        { label: 'Major', value: totals.major, tone: 'major' },
+        { label: 'Minor', value: totals.minor, tone: 'minor' },
+      ],
+    },
+    {
+      key: 'ready',
+      label: 'Projects ready',
+      value: `${readyCount}/${rows.length}`,
+      tone: readyCount === rows.length ? 'passed' : readyCount > 0 ? 'pending' : 'failed',
+      sub: readyCount === rows.length ? 'All projects release-ready' : `${rows.length - readyCount} not yet ready`,
+    },
+    {
+      key: 'stale',
+      label: 'Stale projects',
+      value: staleCount,
+      tone: staleCount > 0 ? 'pending' : 'passed',
+      sub: staleCount > 0 ? `No run in ${STALE_DAYS}+ days` : 'All recently executed',
+    },
+  ]
+
+  // ── What needs attention (max 5) ───────────────────────────────────────
+  const attentionItems = []
+  if (totals.blocker > 0) {
+    attentionItems.push({ tone: 'failed', text: `${plural(totals.blocker, 'blocker case')} blocking release` })
+  }
+  if (totals.critical > 0) {
+    attentionItems.push({ tone: 'failed', text: `${plural(totals.critical, 'critical bug')} open` })
+  }
+  if (totals.openBugs - totals.critical > 0) {
+    const rest = totals.openBugs - totals.critical
+    attentionItems.push({ tone: 'pending', text: `${plural(rest, 'other open bug')} ${rest === 1 ? 'needs' : 'need'} triage` })
+  }
+  if (totals.failed > 0) {
+    attentionItems.push({ tone: 'pending', text: `${plural(totals.failed, 'failing case')} ${totals.failed === 1 ? 'needs' : 'need'} attention` })
+  }
+  if (staleCount > 0 && attentionItems.length < 5) {
+    attentionItems.push({ tone: 'neutral', text: `${plural(staleCount, 'project')} ${staleCount === 1 ? 'has' : 'have'} no run in ${STALE_DAYS}+ days` })
+  }
+  if (totals.pending > 0 && attentionItems.length < 5) {
+    attentionItems.push({ tone: 'neutral', text: `${plural(totals.pending, 'case')} still pending execution` })
+  }
+  if (attentionItems.length === 0 && totals.total > 0) {
+    attentionItems.push({ tone: 'passed', text: 'No blockers, no failing cases, no open bugs' })
+  }
+  if (totals.total === 0 && projects.length > 0) {
+    attentionItems.push({ tone: 'neutral', text: 'Create test cases to start generating readiness data' })
+  }
+
+  // ── Status distribution for the minimal bar ───────────────────────────
+  const statusBreakdown = [
+    { label: 'Pass', value: totals.passed, tone: 'passed' },
+    { label: 'Fail', value: totals.failed, tone: 'failed' },
+    { label: 'Blocker', value: totals.blocker, tone: 'blocker' },
+    { label: 'Skipped', value: totals.skipped, tone: 'skipped' },
+    { label: 'Pending', value: totals.pending, tone: 'pending' },
+  ].filter((s) => s.value > 0)
+
+  // Empty state
+  if (projects.length === 0) {
+    return (
+      <>
+        <PageHeader
+          title="Release readiness"
+          description="See what can ship, what is blocked, and the next QA action."
+        />
+        <div className="rr-empty">
+          <span className="rr-empty-icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19V5" /><path d="M20 19H4" /><path d="M8 15v-4" /><path d="M13 15V8" /><path d="M18 15v-6" />
+            </svg>
+          </span>
+          <h2>No release data yet</h2>
+          <p>Create test cases and complete a test run to generate readiness.</p>
+          <Link to="/projects" className="primary-button">Go to projects</Link>
+        </div>
+      </>
+    )
   }
 
   return (
     <>
       <PageHeader
-        title="Global reports"
-        description="Cross-project testing health at a glance."
+        title="Release readiness"
+        description="See what can ship, what is blocked, and the next QA action."
+        action={<span className="rr-asof">As of {new Date(nowTs).toLocaleDateString()}</span>}
       />
 
-      {/* ── Global health summary ───────────────────────────────────────── */}
-      <section className="panel report-health-summary">
-        <div className="report-health-content">
-          <div className="report-health-ring">
-            <PassRing rate={globalPassRate} size={140} />
+      {/* ── 1. Readiness summary ──────────────────────────────────────── */}
+      <section className="rr-banner">
+        <div className="rr-banner-status">
+          <span className={`rr-readiness-dot rr-readiness-dot--${overallReadiness.tone}`} />
+          <span className={`rr-readiness-label status-text--${overallReadiness.tone}`}>{overallReadiness.label}</span>
+        </div>
+        <div className="rr-banner-stats">
+          <div className="rr-stat">
+            <span className="rr-stat-val">{passRate}%</span>
+            <span className="rr-stat-label">Pass rate</span>
           </div>
-          <div className="report-health-details">
-            <h2>Global health summary</h2>
-            <p className="report-health-subtitle">
-              {totals.total} test cases across {projects.length} project{projects.length !== 1 ? 's' : ''}
-              {totals.totalRuns > 0 ? ` · ${totals.totalRuns} total runs` : ''}
-            </p>
-            <div className="report-health-stats">
-              {[
-                { label: 'Passed',       val: totals.passed,   color: totals.passed > 0 ? 'var(--success)' : undefined },
-                { label: 'Failed',       val: totals.failed,   color: totals.failed > 0 ? 'var(--danger)'  : undefined },
-                { label: 'Blockers',     val: totals.blocker,  color: totals.blocker > 0 ? '#c00' : undefined },
-                { label: 'Not Executed', val: totals.pending,  color: undefined },
-                { label: 'Open bugs',    val: totals.openBugs, color: totals.openBugs > 0 ? 'var(--danger)' : undefined },
-                { label: 'Coverage',     val: `${globalCoverage}%`, color: undefined },
-              ].map(({ label, val, color }) => (
-                <div key={label} className="report-health-stat">
-                  <span className="report-health-stat-label">{label}</span>
-                  <strong style={{ color }}>{val}</strong>
-                </div>
+          <div className="rr-stat">
+            <span className="rr-stat-val">{executed}<span className="rr-stat-dim">/{totals.total}</span></span>
+            <span className="rr-stat-label">Executed</span>
+          </div>
+          <div className="rr-stat">
+            <span className="rr-stat-val">{totals.openBugs}</span>
+            <span className="rr-stat-label">Open bugs</span>
+          </div>
+          <div className="rr-stat">
+            <span className="rr-stat-val">{totals.blocker}</span>
+            <span className="rr-stat-label">Blockers</span>
+          </div>
+        </div>
+        {totals.total > 0 && (
+          <div className="rr-banner-bar">
+            <div className="rr-stacked-bar">
+              {statusBreakdown.map((s) => (
+                <span
+                  key={s.label}
+                  className={`rr-stacked-seg rr-stacked-seg--${s.tone}`}
+                  style={{ flex: s.value }}
+                  title={`${s.label}: ${s.value}`}
+                />
               ))}
             </div>
           </div>
-        </div>
+        )}
       </section>
 
-      {/* ── Insights ─────────────────────────────────────────────────────── */}
-      {globalInsights.length > 0 && (
-        <section className="panel insights-panel" style={{ marginBottom: 18 }}>
-          <div className="section-header"><h2>Executive insights</h2></div>
-          <div className="insights-list">
-            {globalInsights.map((ins, i) => (
-              <div key={i} className={`insight-item insight-item--${ins.type}`}>
-                <div className="insight-badge-dot" />
-                <div className="insight-content">
-                  <strong>{ins.title}</strong>
-                  <p>{ins.text}</p>
-                </div>
+      {/* ── 2. Quality signals ────────────────────────────────────────── */}
+      <section className="rr-signals" aria-label="Quality signals">
+        {signals.map((sig) => (
+          <article key={sig.key} className="rr-signal-card">
+            <span className="rr-signal-label">{sig.label}</span>
+            <span className={`rr-signal-value status-text--${sig.tone}`}>{sig.value}</span>
+            {sig.severities ? (
+              <div className="rr-sev-row">
+                {sig.severities.map((sv) => (
+                  <span key={sv.label} className={`rr-sev rr-sev--${sv.tone}`} title={`${sv.label}: ${sv.value}`}>
+                    {sv.value} {sv.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="rr-signal-sub">{sig.sub}</span>
+            )}
+          </article>
+        ))}
+      </section>
+
+      {/* ── 3. What needs attention ────────────────────────────────────── */}
+      {attentionItems.length > 0 && (
+        <section className="rr-section">
+          <h2 className="rr-section-title">What needs attention</h2>
+          <div className="rr-attention-list">
+            {attentionItems.map((item, i) => (
+              <div key={i} className={`rr-attention-item rr-attention-item--${item.tone}`}>
+                <span className={`rr-attention-dot rr-attention-dot--${item.tone}`} />
+                <span className="rr-attention-text">{item.text}</span>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* ── Status distribution + failing modules ─────────────────────── */}
-      <section className="report-grid" style={{ marginBottom: 18 }}>
-        <article className="panel chart-panel chart-panel--tall">
-          <div className="section-header"><h2><BarChartIcon width={16} height={16} /> Status distribution</h2></div>
-          <div className="chart-bars chart-bars--solo">
-            <Bar label="Pass"          value={totals.passed}   total={totals.total} tone="passed" />
-            <Bar label="Fail"          value={totals.failed}   total={totals.total} tone="failed" />
-            <Bar label="Blocker"       value={totals.blocker}  total={totals.total} tone="blocker" />
-            <Bar label="Reported"      value={totals.reported} total={totals.total} tone="reported" />
-            <Bar label="In Progress"   value={totals.inProg}   total={totals.total} tone="inprogress" />
-            <Bar label="Need Clarif."  value={totals.needCl}   total={totals.total} tone="clarification" />
-            <Bar label="Hold"          value={totals.hold}     total={totals.total} tone="hold" />
-            <Bar label="Skipped"       value={totals.skipped}  total={totals.total} tone="skipped" />
-            <Bar label="Not Executed"  value={totals.pending}  total={totals.total} tone="pending" />
+      {/* ── 4. Top risk areas (failing modules) ───────────────────────── */}
+      {riskAreas.length > 0 && (
+        <section className="rr-section">
+          <div className="rr-section-head">
+            <h2 className="rr-section-title">Top risk areas</h2>
+            <span className="rr-section-note">Modules with failing or blocked cases</span>
           </div>
-        </article>
-
-        <article className="panel report-insight-panel chart-panel--tall">
-          <div className="section-header">
-            <h2><ShieldCheckIcon width={16} height={16} /> Top failing modules</h2>
-            {failingModules.length > 0 && (
-              <StatusPill tone="failed">{failingModules.length} module{failingModules.length !== 1 ? 's' : ''}</StatusPill>
-            )}
-          </div>
-          {failingModules.length === 0 ? (
-            <div className="empty-table-row">No failing modules right now. All systems look healthy.</div>
-          ) : (
-            <div className="module-risk-list">
-              {failingModules.map((item) => (
-                <div key={item.module} className="module-risk-row">
-                  <div>
-                    <strong>{item.module}</strong>
-                    <span>{[...item.projects].join(', ')}</span>
-                  </div>
-                  <StatusPill tone="failed">{item.count} failing</StatusPill>
+          <div className="rr-risk-list">
+            {riskAreas.map((m) => (
+              <div key={m.module} className="rr-risk-row">
+                <span className="rr-risk-name">{m.module}</span>
+                <div className="rr-risk-bar" aria-hidden="true">
+                  <span
+                    className={`rr-risk-fill rr-risk-fill--${m.tone}`}
+                    style={{ width: `${riskMaxScore ? Math.round((m.score / riskMaxScore) * 100) : 0}%` }}
+                  />
                 </div>
-              ))}
-            </div>
-          )}
-        </article>
-      </section>
+                <span className="rr-risk-count">{m.details}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
+      {/* ── 5. Project readiness ──────────────────────────────────────── */}
+      <section className="rr-section">
+        <div className="rr-section-head">
+          <h2 className="rr-section-title">Project readiness</h2>
+          <span className="rr-section-note">{plural(rows.length, 'project')}</span>
+        </div>
+
+        <div className="rr-project-list" aria-label="Project readiness">
+          <div className="rr-project-list-head" aria-hidden="true">
+            <span>Project</span>
+            <span>Status</span>
+            <span>Pass rate</span>
+            <span>Executed</span>
+            <span>Issues</span>
+            <span>Latest run</span>
+            <span>Next action</span>
+          </div>
+          {rows.map((r) => (
+            <article key={r.id} className="rr-project-row">
+              <div className="rr-project-main">
+                <Link to={`/projects/${r.id}/reports`} className="rr-project-link">{r.name}</Link>
+                <span className="rr-row-subtext">{r.totalRuns ? plural(r.totalRuns, 'run') : 'No runs yet'}</span>
+              </div>
+
+              <div className="rr-project-status">
+                <StatusPill tone={r.readiness.tone}>{r.readiness.label}</StatusPill>
+              </div>
+
+              <div className="rr-rate-cell">
+                <span className={`rr-rate-value status-text--${r.readiness.tone}`}>{r.passRate}%</span>
+                <div className="rr-mini-bar" aria-hidden="true">
+                  <span className={`rr-mini-fill rr-mini-fill--${r.readiness.tone}`} style={{ width: `${r.passRate}%` }} />
+                </div>
+                <span className="rr-row-subtext">Pass rate</span>
+              </div>
+
+              <div className="rr-row-metric">
+                <strong>{r.passed}</strong>
+                <span>of {r.total} cases</span>
+              </div>
+
+              <div className="rr-issue-stack">
+                <span className={r.failed > 0 ? 'metric-failed' : ''}><strong>{r.failed}</strong> Failed</span>
+                <span className={r.blocker > 0 ? 'metric-failed' : ''}><strong>{r.blocker}</strong> Blockers</span>
+                <span className={r.openBugs > 0 ? 'metric-failed' : ''}><strong>{r.openBugs}</strong> Open Bugs</span>
+              </div>
+
+              <div className="rr-run-cell">
+                {r.latestRun ? (
+                  <>
+                    <span className="rr-run-info">{r.latestRun.name}</span>
+                    <span className={`rr-run-date${r.noRecentRun ? ' rr-run-date--stale' : ''}`}>
+                      {formatRunDate(r.latestRun.completedAt || r.latestRun.date)}
+                      {r.noRecentRun ? ' · stale' : ''}
+                    </span>
+                  </>
+                ) : (
+                  <span className={`rr-muted${r.total > 0 ? ' rr-run-date--stale' : ''}`}>No completed run</span>
+                )}
+              </div>
+
+              <div className="rr-action-cell">
+                <Link to={r.action.to} className="rr-action-link">{r.action.text}</Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
     </>
   )
 }

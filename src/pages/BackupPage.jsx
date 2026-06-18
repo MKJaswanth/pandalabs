@@ -4,6 +4,7 @@ import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { isFirebaseEnabled } from '../utils/firebase'
 import { suppressSubscriptions } from '../utils/remoteStorage'
+import { addActivity } from '../utils/activity'
 import {
   createWorkspaceBackup,
   downloadWorkspaceBackup,
@@ -68,6 +69,16 @@ export function BackupPage() {
     }
   }
 
+  const handleExport = () => {
+    downloadWorkspaceBackup()
+    addActivity({
+      entityType: 'backup',
+      action: 'exported',
+      title: 'Backup exported',
+      details: 'JSON backup file exported/downloaded'
+    })
+  }
+
   const doRestore = async () => {
     if (!parsed) return
     if (mode === 'replace') {
@@ -91,22 +102,26 @@ export function BackupPage() {
         // Cloud sync must succeed before we reload — if we reload with Firestore
         // still holding stale data, subscriptions will wipe the restored localStorage.
         await runCloudSync()
-        try {
-          const { logActivityRemote } = await import('../utils/remoteStorage')
-          await logActivityRemote({
-            type: 'backup_restored',
-            entityType: 'backup',
-            entityId: parsed.exportedAt || new Date().toISOString(),
-            message: `Workspace backup restored (${mode === 'replace' ? 'replaced workspace' : 'merged backup'})`,
-          })
-        } catch (err) {
-          console.error('[backup] Failed to log backup_restored activity:', err)
-        }
-      } else {
-        toast.success(mode === 'replace' ? 'Workspace restored from backup.' : 'Backup merged into workspace.')
-        setTimeout(() => window.location.reload(), 900)
       }
+
+      await addActivity({
+        entityType: 'backup',
+        action: 'restored',
+        title: 'Backup restored',
+        details: `Workspace backup restored (${mode === 'replace' ? 'replaced workspace' : 'merged backup'})`,
+        metadata: { mode, exportedAt: parsed.exportedAt }
+      })
+
+      toast.success(mode === 'replace' ? 'Workspace restored from backup.' : 'Backup merged into workspace.')
+      setTimeout(() => window.location.reload(), 900)
     } catch (err) {
+      console.error('[backup] Restore failed:', err)
+      addActivity({
+        entityType: 'backup',
+        action: 'restored',
+        title: `Backup restore failed: ${err.message || 'Unknown error'}`,
+        metadata: { mode, error: err.message }
+      })
       toast.error(`Restore failed: ${err.message}`)
     }
   }
@@ -117,7 +132,7 @@ export function BackupPage() {
         title="Backup"
         description="Export or restore the full local QA Lab workspace."
         action={
-          <button className="primary-button" type="button" onClick={downloadWorkspaceBackup}>
+          <button className="primary-button" type="button" onClick={handleExport}>
             Export JSON
           </button>
         }

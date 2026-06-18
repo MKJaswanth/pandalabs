@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { newId } from '../utils/id'
 import { deleteProject, getProjects, getProjectsRaw, isDeleted, mergeById, saveProject, setProjects as setProjectsCache, getCurrentUser } from '../utils/storage'
-import { deleteProjectRemote, saveProjectRemote, subscribeProjects, logActivityRemote } from '../utils/remoteStorage'
+import { deleteProjectRemote, saveProjectRemote, subscribeProjects } from '../utils/remoteStorage'
 import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
+import { addActivity } from '../utils/activity'
 
 const PROJECTS_CHANGED = 'qa-projects-changed'
 
@@ -46,17 +47,16 @@ export function useProjects() {
     setProjectsState(getProjects())
     notify()
     const remoteSaved = remoteReady ? await saveProjectRemote(project) : false
-    if (remoteReady) {
-      logActivityRemote({
-        id: newId(),
-        type: 'project_created',
-        entityType: 'project',
-        entityId: project.id,
-        projectId: project.id,
-        message: `Project "${project.name}" was created`,
-        after: project,
-      })
-    }
+    
+    addActivity({
+      entityType: 'project',
+      entityId: project.id,
+      projectId: project.id,
+      action: 'created',
+      title: `Project created: ${project.name}`,
+      after: project,
+    })
+    
     return { project, remoteSaved, remoteReady }
   }, [notify, remoteReady])
 
@@ -67,16 +67,16 @@ export function useProjects() {
     notify()
     if (remoteReady) {
       deleteProjectRemote(id)
-      logActivityRemote({
-        id: newId(),
-        type: 'project_deleted',
-        entityType: 'project',
-        entityId: id,
-        projectId: id,
-        message: `Project "${before?.name || id}" was deleted`,
-        before,
-      })
     }
+    
+    addActivity({
+      entityType: 'project',
+      entityId: id,
+      projectId: id,
+      action: 'deleted',
+      title: `Project deleted: ${before?.name || id}`,
+      before,
+    })
   }, [notify, remoteReady])
 
   const updateProject = useCallback((project) => {
@@ -86,18 +86,29 @@ export function useProjects() {
     notify()
     if (remoteReady) {
       saveProjectRemote(project)
-      logActivityRemote({
-        id: newId(),
-        type: 'project_updated',
-        entityType: 'project',
-        entityId: project.id,
-        projectId: project.id,
-        message: `Project "${project.name}" was updated`,
-        before,
-        after: project,
-      })
     }
+    
+    const changes = []
+    if (before) {
+      if (before.name !== project.name) {
+        changes.push(`Name changed from "${before.name}" to "${project.name}"`)
+      }
+      if (before.description !== project.description) {
+        changes.push('Description changed')
+      }
+    }
+    
+    addActivity({
+      entityType: 'project',
+      entityId: project.id,
+      projectId: project.id,
+      action: 'updated',
+      title: `Project updated: ${changes.join(', ') || 'Details changed'}`,
+      before,
+      after: project,
+    })
   }, [notify, remoteReady])
 
   return { projects, addProject, removeProject, updateProject, refresh }
 }
+

@@ -39,3 +39,6 @@ workflow.md
 *.njsproj
 *.sln
 *.sw?
+
+# AI Agent customizations
+.agents/

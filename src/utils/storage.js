@@ -140,6 +140,75 @@ export const saveTestRun = (projectId, run) => {
 export const deleteTestRun = (projectId, id) =>
   set(runsKey(projectId), markDeleted(getTestRunsRaw(projectId), id))
 
+// When a bug is deleted, strip its id from every saved run and the active draft
+// run so the UI never shows a stale/deleted bug link. Test case status, actual
+// results, and the runs themselves are preserved — only the bug *references*
+// are cleared (v1 behaviour). Returns the records that changed so the caller can
+// sync them to Firebase.
+export function removeBugReferencesFromRuns(projectId, bugId) {
+  const changedRuns = []
+
+  const runs = getTestRunsRaw(projectId)
+  let runsDirty = false
+  runs.forEach((run) => {
+    let dirty = false
+    if (Array.isArray(run.linkedBugIds) && run.linkedBugIds.includes(bugId)) {
+      run.linkedBugIds = run.linkedBugIds.filter((id) => id !== bugId)
+      dirty = true
+    }
+    if (Array.isArray(run.cases)) {
+      run.cases.forEach((c) => {
+        if (c.bugId === bugId) { c.bugId = ''; dirty = true }
+        if (c.linkedBugId === bugId) { c.linkedBugId = ''; dirty = true }
+        if (Array.isArray(c.linkedBugIds) && c.linkedBugIds.includes(bugId)) {
+          c.linkedBugIds = c.linkedBugIds.filter((id) => id !== bugId)
+          dirty = true
+        }
+      })
+    }
+    if (dirty) {
+      run.bugsLogged = Array.isArray(run.linkedBugIds)
+        ? run.linkedBugIds.length
+        : Math.max(0, (run.bugsLogged ?? 1) - 1)
+      runsDirty = true
+      changedRuns.push(run)
+    }
+  })
+  if (runsDirty) setTestRuns(projectId, runs)
+
+  // Active draft run (single per project)
+  let changedDraft = null
+  const draft = get(runDraftKey(projectId))
+  if (draft) {
+    let dirty = false
+    if (Array.isArray(draft.loggedBugIds) && draft.loggedBugIds.includes(bugId)) {
+      draft.loggedBugIds = draft.loggedBugIds.filter((id) => id !== bugId)
+      dirty = true
+    }
+    if (draft.results && typeof draft.results === 'object') {
+      Object.entries(draft.results).forEach(([caseId, result]) => {
+        if (result && result.bugId === bugId) {
+          result.bugId = undefined
+          dirty = true
+          // Allow the case to be logged again now that its bug is gone.
+          if (Array.isArray(draft.loggedBugCaseIds)) {
+            draft.loggedBugCaseIds = draft.loggedBugCaseIds.filter((id) => id !== caseId)
+          }
+        }
+      })
+    }
+    if (dirty) {
+      draft.bugsLogged = Array.isArray(draft.loggedBugIds)
+        ? draft.loggedBugIds.length
+        : Math.max(0, (draft.bugsLogged ?? 1) - 1)
+      set(runDraftKey(projectId), draft)
+      changedDraft = draft
+    }
+  }
+
+  return { changedRuns, changedDraft }
+}
+
 // Merge helpers — used by Firebase subscription callbacks so local records
 // are never silently removed when Firestore has fewer items than localStorage.
 // incoming (Firebase) wins on field conflicts; local-only records are kept.
@@ -171,3 +240,16 @@ export const getTeamMembers = () => excludeDeleted(getTeamMembersRaw())
 export const setTeamMembers = (members) => set(teamMembersKey(), members)
 export const deleteTeamMember = (id) =>
   set(teamMembersKey(), markDeleted(getTeamMembersRaw(), id))
+
+// Activities
+export const activitiesKey = () => `${cachePrefix()}activities`
+export const getActivitiesRaw = () => get(activitiesKey()) ?? []
+export const setActivities = (activities) => set(activitiesKey(), activities)
+export const saveActivity = (activity) => {
+  const list = getActivitiesRaw()
+  if (!list.some((a) => a.id === activity.id)) {
+    list.push(activity)
+    set(activitiesKey(), list)
+  }
+}
+

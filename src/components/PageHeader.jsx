@@ -1,7 +1,7 @@
 export function PageHeader({ title, description, action }) {
   return (
     <div className="page-header">
-      <div>
+      <div className="page-header-copy">
         <h1>{title}</h1>
         {description && <p>{description}</p>}
       </div>

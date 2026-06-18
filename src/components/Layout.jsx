@@ -6,12 +6,14 @@ import { useProjects } from '../hooks/useProjects'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
 import { isFirebaseEnabled } from '../utils/firebase'
 import { getStoragePercent, getStorageStatus } from '../utils/storageQuota'
+import { getProjectReportMetrics } from '../utils/reportMetrics'
 import { ChevronDownIcon } from './Icons'
 
 const globalNav = [
   { label: 'Dashboard', to: '/dashboard', icon: 'dashboard' },
   { label: 'Projects', to: '/projects', icon: 'projects' },
   { label: 'Reports', to: '/reports', icon: 'reports' },
+  { label: 'Activity', to: '/activity', icon: 'activity' },
   { label: 'Backup', to: '/backup', icon: 'backup' },
 ]
 
@@ -29,6 +31,7 @@ function Icon({ name }) {
     dashboard: <><rect x="3" y="3" width="7" height="8" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="15" width="7" height="6" rx="1.5" /></>,
     projects: <><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h4" /></>,
     reports: <><path d="M4 19V5" /><path d="M20 19H4" /><path d="M8 15v-4" /><path d="M13 15V8" /><path d="M18 15v-6" /></>,
+    activity: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
     backup: <><path d="M12 3v10" /><path d="m8 9 4 4 4-4" /><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" /></>,
     cases: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="m3 6 .8.8L5.5 5" /><path d="m3 12 .8.8 1.7-1.8" /><path d="m3 18 .8.8 1.7-1.8" /></>,
     runs: <><path d="M5 4v16" /><path d="m5 12 6-4v8Z" /><path d="M15 8h4" /><path d="M15 16h4" /></>,
@@ -171,18 +174,21 @@ function ProjectOverview({ projectId }) {
   const testCases = getTestCases(projectId)
   const bugs = getBugs(projectId)
   const runs = getTestRuns(projectId)
-  const passed = testCases.filter((testCase) => testCase.status === 'Pass').length
-  const openBugs = bugs.filter((bug) => bug.status !== 'Closed').length
-  const blockers = testCases.filter((testCase) => testCase.status === 'Blocker').length
-  const passRate = testCases.length ? Math.round((passed / testCases.length) * 100) : 0
-  const latestRun = runs.length ? [...runs].sort((a, b) => new Date(b.completedAt || b.date) - new Date(a.completedAt || a.date))[0] : null
-  const health = blockers > 0 || passRate < 50 ? 'At risk' : passRate < 70 || openBugs > 0 ? 'Review' : 'Healthy'
-  const healthTone = health === 'Healthy' ? 'passed' : health === 'Review' ? 'pending' : 'failed'
+
+  const metrics = getProjectReportMetrics({ project, testCases, bugs, runs })
+
+  const {
+    total,
+    openBugs,
+    passRate,
+    latestRun,
+    health
+  } = metrics
 
   return (
     <section className="project-overview-bar" aria-label="Project health summary">
       <div className="project-bar-info">
-        <span className={`project-health-badge health-badge--${healthTone}`}>{health}</span>
+        <span className={`project-health-badge health-badge--${health.tone}`}>{health.label}</span>
         <h2>{project.name}</h2>
         {project.description && <span className="project-bar-desc">— {project.description}</span>}
       </div>
@@ -194,7 +200,7 @@ function ProjectOverview({ projectId }) {
         <div className="bar-metric-divider" />
         <div className="bar-metric">
           <span className="bar-metric-label">Cases</span>
-          <strong className="bar-metric-val">{testCases.length}</strong>
+          <strong className="bar-metric-val">{total}</strong>
         </div>
         <div className="bar-metric-divider" />
         <div className="bar-metric">
