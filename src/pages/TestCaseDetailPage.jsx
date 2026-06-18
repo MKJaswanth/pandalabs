@@ -11,11 +11,11 @@ import { useUser } from '../context/UserContext'
 import { useBugs } from '../hooks/useBugs'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useActivity } from '../hooks/useActivity'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { newId } from '../utils/id'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
 import { ArrowRightIcon } from '../components/Icons'
-import { getReporterName } from '../utils/export'
 
 const severityTone = { Critical: 'failed', Major: 'pending', Minor: 'passed' }
 const PRIORITIES = ['High', 'Med', 'Low']
@@ -28,18 +28,22 @@ export function TestCaseDetailPage() {
   const { testCases, updateTestCase, removeTestCase } = useTestCases(projectId)
   const { bugs, addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
+  const { activities } = useActivity()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()
 
   const tc = testCases.find((t) => t.id === testCaseId)
 
-  const getUpdaterName = () => {
-    if (!tc || !tc.updatedBy) return ''
-    if (tc.updatedByName) return tc.updatedByName
-    const member = members.find((m) => m.id === tc.updatedBy || m.name === tc.updatedBy)
+  const resolveUserUid = (uid) => {
+    if (!uid) return ''
+    const isUid = /^[a-zA-Z0-9]{20,36}$/.test(uid)
+    if (!isUid) return uid
+    const act = activities.find((a) => a.actorId === uid)
+    if (act && act.actorName) return act.actorName
+    const member = members.find((m) => m.id === uid)
     if (member) return member.name
-    return getReporterName(tc.updatedBy, tc.updatedByName)
+    return uid
   }
 
   const [editing, setEditing] = useState(false)
@@ -285,16 +289,20 @@ export function TestCaseDetailPage() {
             <div><dt>Assignee</dt><dd>{tc.assignee || '—'}</dd></div>
             <div><dt>Actual result</dt><dd className={tc.actual ? '' : 'text-muted'}>{tc.actual || 'Not recorded'}</dd></div>
             <div><dt>Bugs</dt><dd>{linkedBugs.length} linked</dd></div>
-            <div><dt>Created</dt><dd>{tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—'}</dd></div>
-            {tc.updatedAt && (
-              <div>
-                <dt>Last update</dt>
-                <dd>
-                  {new Date(tc.updatedAt).toLocaleDateString()}
-                  {tc.updatedBy && <span className="text-muted"> by {getUpdaterName()}</span>}
-                </dd>
-              </div>
-            )}
+            <div>
+              <dt>Created</dt>
+              <dd>
+                {tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—'}
+                {tc.createdBy && <span className="text-muted"> by {resolveUserUid(tc.createdBy)}</span>}
+              </dd>
+            </div>
+            <div>
+              <dt>Last update</dt>
+              <dd>
+                {tc.updatedAt ? new Date(tc.updatedAt).toLocaleDateString() : (tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—')}
+                {(tc.updatedBy || tc.createdBy) && <span className="text-muted"> by {resolveUserUid(tc.updatedBy || tc.createdBy)}</span>}
+              </dd>
+            </div>
           </dl>
           <div className="mt-md">
             <Link className="text-link" to={`/projects/${projectId}/bugs`}>
