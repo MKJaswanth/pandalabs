@@ -70,8 +70,8 @@ export function useBugs(projectId) {
       projectId,
       action: 'created',
       title: bug.metadata?.autoLogged
-        ? `Bug logged from failed test run: ${bug.title}`
-        : `Bug logged: ${bug.title}`,
+        ? `Bug ${bug.sourceBugId} logged from failed test run: ${bug.title}`
+        : `Bug ${bug.sourceBugId} logged: ${bug.title}`,
       after: bug,
     })
 
@@ -97,7 +97,7 @@ export function useBugs(projectId) {
       entityId: id,
       projectId,
       action: 'deleted',
-      title: `Bug deleted: ${before?.title || id}`,
+      title: `Bug ${before?.sourceBugId || id.slice(0, 8).toUpperCase()} deleted: ${before?.title || id}`,
       before,
     })
   }, [projectId, remoteReady])
@@ -115,23 +115,24 @@ export function useBugs(projectId) {
     const isSeverityChange = before && before.severity !== bug.severity
     const isAssigneeChange = before && before.assignedTo !== bug.assignedTo
     let action = 'updated'
-    let title = `Bug updated: ${bug.title}`
+    const bugId = bug.sourceBugId || bug.id.slice(0, 8).toUpperCase()
+    let title = `In ${bugId} details updated: ${bug.title}`
 
     if (before) {
       if (isStatusChange) {
         action = 'status_changed'
-        title = `Bug status changed from ${before.status} to ${bug.status}`
+        title = `In ${bugId} status changed from ${before.status} to ${bug.status}`
       } else if (isPriorityChange) {
         action = 'priority_changed'
-        title = `Bug priority changed from ${before.priority ?? 'Medium'} to ${bug.priority ?? 'Medium'}`
+        title = `In ${bugId} priority changed from ${before.priority ?? 'Medium'} to ${bug.priority ?? 'Medium'}`
       } else if (isSeverityChange) {
         action = 'severity_changed'
-        title = `Bug severity changed from ${before.severity} to ${bug.severity}`
+        title = `In ${bugId} severity changed from ${before.severity} to ${bug.severity}`
       } else if (isAssigneeChange) {
         action = 'assigned'
         title = bug.assignedTo
-          ? `Bug assigned to ${bug.assignedTo}`
-          : `Bug unassigned`
+          ? `In ${bugId} assigned to ${bug.assignedTo}`
+          : `In ${bugId} unassigned`
       }
     }
 

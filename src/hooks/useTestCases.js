@@ -46,7 +46,7 @@ export function useTestCases(projectId) {
       entityId: tc.id,
       projectId,
       action: 'created',
-      title: `Test case created: ${tc.title}`,
+      title: `Test case ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()} created: ${tc.title}`,
       after: tc,
     })
 
@@ -66,7 +66,7 @@ export function useTestCases(projectId) {
       entityId: id,
       projectId,
       action: 'deleted',
-      title: `Test case deleted: ${before?.title || id}`,
+      title: `Test case ${before?.sourceTcId || id.slice(0, 8).toUpperCase()} deleted: ${before?.title || id}`,
       before,
     })
   }, [projectId, remoteReady])
@@ -92,16 +92,17 @@ export function useTestCases(projectId) {
     }
 
     const isStatusChange = before && before.status !== updated.status
-    let title = `Test case updated: ${updated.title}`
+    const tcId = updated.sourceTcId || updated.id.slice(0, 8).toUpperCase()
+    let title = `In ${tcId} details updated: ${updated.title}`
     let details = ''
 
     if (before) {
       if (isStatusChange) {
-        title = `Status changed from ${before.status} to ${updated.status}`
+        title = `In ${tcId} status changed from ${before.status} to ${updated.status}`
       } else {
         const fieldChanges = describeTestCaseChanges(before, updated)
         if (fieldChanges.length > 0) {
-          title = `${fieldChanges[0]} for "${updated.title}"`
+          title = `In ${tcId} ${fieldChanges[0]} for "${updated.title}"`
           details = fieldChanges.join(', ')
         }
       }
