@@ -11,11 +11,11 @@ import { useUser } from '../context/UserContext'
 import { useBugs } from '../hooks/useBugs'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
-import { useActivity } from '../hooks/useActivity'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { newId } from '../utils/id'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
 import { ArrowRightIcon } from '../components/Icons'
+import { getReporterName } from '../utils/export'
 
 const severityTone = { Critical: 'failed', Major: 'pending', Minor: 'passed' }
 const PRIORITIES = ['High', 'Med', 'Low']
@@ -28,14 +28,20 @@ export function TestCaseDetailPage() {
   const { testCases, updateTestCase, removeTestCase } = useTestCases(projectId)
   const { bugs, addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
-  const { getActivitiesByEntity } = useActivity()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()
 
-  const entityActivities = getActivitiesByEntity('test_case', testCaseId)
-
   const tc = testCases.find((t) => t.id === testCaseId)
+
+  const getUpdaterName = () => {
+    if (!tc || !tc.updatedBy) return ''
+    if (tc.updatedByName) return tc.updatedByName
+    const member = members.find((m) => m.id === tc.updatedBy || m.name === tc.updatedBy)
+    if (member) return member.name
+    return getReporterName(tc.updatedBy, tc.updatedByName)
+  }
+
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(null)
   const [showLogBug, setShowLogBug] = useState(false)
@@ -271,32 +277,6 @@ export function TestCaseDetailPage() {
             )}
           </div>
 
-          <div className="panel">
-            <div className="section-header">
-              <h2>History <span className="count-badge">{entityActivities.length}</span></h2>
-            </div>
-            {entityActivities.length ? (
-              <div className="history-list history-list--panel">
-                {entityActivities.map((entry) => (
-                  <div key={entry.id} className="history-entry">
-                    <span className="history-details">
-                      <strong>{entry.actorName || 'System'}</strong>: {entry.title}
-                      {entry.details && (
-                        <span className="history-detail-sub">
-                          {entry.details}
-                        </span>
-                      )}
-                    </span>
-                    <span className="history-meta">
-                      {entry.actorName || 'Unknown user'} • {new Date(entry.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-table-row">No history recorded yet.</div>
-            )}
-          </div>
         </div>
 
         <aside className="panel detail-aside">
@@ -311,7 +291,7 @@ export function TestCaseDetailPage() {
                 <dt>Last update</dt>
                 <dd>
                   {new Date(tc.updatedAt).toLocaleDateString()}
-                  {tc.updatedBy && <span className="text-muted"> by {tc.updatedBy}</span>}
+                  {tc.updatedBy && <span className="text-muted"> by {getUpdaterName()}</span>}
                 </dd>
               </div>
             )}

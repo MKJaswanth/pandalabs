@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { newId } from '../utils/id'
-import { deleteTestCase, getTestCases, getTestCasesRaw, isDeleted, mergeById, saveTestCase, setTestCases as setTestCasesCache } from '../utils/storage'
+import { deleteTestCase, getTestCases, getTestCasesRaw, isDeleted, mergeById, saveTestCase, setTestCases as setTestCasesCache, getCurrentUser } from '../utils/storage'
 import { deleteTestCaseRemote, saveTestCaseRemote, subscribeTestCases } from '../utils/remoteStorage'
 import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
@@ -27,12 +27,15 @@ export function useTestCases(projectId) {
 
   const addTestCase = useCallback((data) => {
     const creatorId = auth?.currentUser?.uid || ''
+    const creatorName = getCurrentUser() || ''
     const tc = {
       id: newId(),
       createdAt: new Date().toISOString(),
       status: 'Not Executed',
       createdBy: creatorId,
+      createdByName: creatorName,
       updatedBy: creatorId,
+      updatedByName: creatorName,
       ...data,
     }
     saveTestCase(projectId, tc)
@@ -83,8 +86,13 @@ export function useTestCases(projectId) {
 
   const updateTestCase = useCallback((tc) => {
     const creatorId = auth?.currentUser?.uid || ''
+    const creatorName = getCurrentUser() || ''
     const before = getTestCases(projectId).find((t) => t.id === tc.id)
-    const updated = { ...tc, updatedBy: creatorId }
+    const updated = {
+      ...tc,
+      updatedBy: creatorId,
+      updatedByName: creatorName,
+    }
     saveTestCase(projectId, updated)
     setTestCasesState(getTestCases(projectId))
     if (remoteReady) {

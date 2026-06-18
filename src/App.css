@@ -1756,6 +1756,24 @@ a.process-chip:hover { border-color: var(--accent); color: var(--accent); }
   border-radius: 12px;
 }
 
+.detail-aside dl > div {
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.detail-aside dl > div:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.detail-aside .mt-md {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
+
 .detail-title-row {
   display: flex;
   align-items: center;
@@ -1769,6 +1787,43 @@ a.process-chip:hover { border-color: var(--accent); color: var(--accent); }
   font-size: 18px;
   font-weight: 700;
   color: var(--text-strong);
+}
+
+.detail-content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.detail-block {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.detail-block h3 {
+  margin: 0 0 6px 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.detail-block p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-strong);
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .detail-content-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
 }
 
 /* TestCase steps view */
