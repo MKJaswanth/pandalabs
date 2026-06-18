@@ -31,8 +31,9 @@ export function exportTestCases(testCases, projectName) {
     'Dev Remarks':     tc.devRemarks,
     'QA Remarks':      tc.qaRemarks,
     'Created At':      tc.createdAt,
+    'Created By':      getReporterName(tc.createdBy, tc.createdByName),
     'Updated At':      tc.updatedAt,
-    'Updated By':      tc.updatedBy,
+    'Updated By':      getReporterName(tc.updatedBy || tc.createdBy, tc.updatedByName || tc.createdByName),
   }))
   const headers = Object.keys(rows[0] ?? {})
   download(toCSV(rows, headers), `${projectName}-test-cases.csv`)

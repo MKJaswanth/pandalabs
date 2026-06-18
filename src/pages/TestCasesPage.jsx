@@ -174,6 +174,9 @@ export function TestCasesPage() {
       history: [historyEntry('cloned', user, `Cloned from ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}`)],
     }
     delete clone.id
+    delete clone.createdBy
+    delete clone.createdByName
+    delete clone.updatedByName
     addTestCase(clone)
   }
 

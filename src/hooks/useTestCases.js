@@ -32,11 +32,11 @@ export function useTestCases(projectId) {
       id: newId(),
       createdAt: new Date().toISOString(),
       status: 'Not Executed',
-      createdBy: creatorId,
-      createdByName: creatorName,
-      updatedBy: creatorId,
-      updatedByName: creatorName,
       ...data,
+      createdBy: data.createdBy || creatorId || creatorName || 'Unknown',
+      createdByName: data.createdByName || creatorName || 'Unknown',
+      updatedBy: data.updatedBy || creatorId || creatorName || 'Unknown',
+      updatedByName: data.updatedByName || creatorName || 'Unknown',
     }
     saveTestCase(projectId, tc)
     setTestCasesState(getTestCases(projectId))
@@ -90,8 +90,8 @@ export function useTestCases(projectId) {
     const before = getTestCases(projectId).find((t) => t.id === tc.id)
     const updated = {
       ...tc,
-      updatedBy: creatorId,
-      updatedByName: creatorName,
+      updatedBy: creatorId || creatorName || 'Unknown',
+      updatedByName: creatorName || 'Unknown',
     }
     saveTestCase(projectId, updated)
     setTestCasesState(getTestCases(projectId))

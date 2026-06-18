@@ -35,15 +35,16 @@ export function TestCaseDetailPage() {
 
   const tc = testCases.find((t) => t.id === testCaseId)
 
-  const resolveUserUid = (uid) => {
-    if (!uid) return ''
+  const resolveUserUid = (uid, nameFallback) => {
+    if (!uid) return nameFallback || ''
     const isUid = /^[a-zA-Z0-9]{20,36}$/.test(uid)
+    if (isUid && nameFallback) return nameFallback
     if (!isUid) return uid
     const act = activities.find((a) => a.actorId === uid)
     if (act && act.actorName) return act.actorName
     const member = members.find((m) => m.id === uid)
     if (member) return member.name
-    return uid
+    return nameFallback || uid
   }
 
   const [editing, setEditing] = useState(false)
@@ -293,14 +294,18 @@ export function TestCaseDetailPage() {
               <dt>Created</dt>
               <dd>
                 {tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—'}
-                {tc.createdBy && <span className="text-muted"> by {resolveUserUid(tc.createdBy)}</span>}
+                {(tc.createdBy || tc.createdByName) && (
+                  <span className="text-muted"> by {resolveUserUid(tc.createdBy, tc.createdByName)}</span>
+                )}
               </dd>
             </div>
             <div>
               <dt>Last update</dt>
               <dd>
                 {tc.updatedAt ? new Date(tc.updatedAt).toLocaleDateString() : (tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—')}
-                {(tc.updatedBy || tc.createdBy) && <span className="text-muted"> by {resolveUserUid(tc.updatedBy || tc.createdBy)}</span>}
+                {(tc.updatedBy || tc.updatedByName || tc.createdBy || tc.createdByName) && (
+                  <span className="text-muted"> by {resolveUserUid(tc.updatedBy || tc.createdBy, tc.updatedByName || tc.createdByName)}</span>
+                )}
               </dd>
             </div>
           </dl>
