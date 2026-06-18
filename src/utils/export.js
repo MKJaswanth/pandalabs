@@ -38,6 +38,15 @@ export function exportTestCases(testCases, projectName) {
   download(toCSV(rows, headers), `${projectName}-test-cases.csv`)
 }
 
+export function getReporterName(reportedBy, reportedByName) {
+  if (!reportedBy) return reportedByName || ''
+  const isUid = /^[a-zA-Z0-9]{20,36}$/.test(reportedBy)
+  if (isUid && reportedByName) {
+    return reportedByName
+  }
+  return reportedBy
+}
+
 export function exportBugs(bugs, projectName) {
   const rows = bugs.map((b) => ({
     'Bug ID':             b.sourceBugId || b.id.slice(0, 8).toUpperCase(),
@@ -53,7 +62,7 @@ export function exportBugs(bugs, projectName) {
     'Expected Result':    b.expected,
     'Actual Result':      b.actual,
     'Assigned To':        b.assignedTo,
-    'Reported By':        b.reportedBy,
+    'Reported By':        getReporterName(b.reportedBy, b.reportedByName),
     'Reported Date':      b.reportedDate,
     'Fixed In Build':     b.fixedInBuild,
     'Retest Status':      b.retestStatus,

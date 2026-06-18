@@ -9,6 +9,7 @@ import { useTestRuns } from '../hooks/useTestRuns'
 import { exportBugs, exportTestCases, exportTestRuns } from '../utils/export'
 import { BarChartIcon, DownloadIcon, PrintIcon } from '../components/Icons'
 import { normalizeTestStatus } from '../utils/status'
+import { getProjectReportMetrics, getActiveBugs, isOpenBug, normalizeBugStatus } from '../utils/reportMetrics'
 
 export function ProjectReportsPage() {
   const { projectId } = useParams()
@@ -20,24 +21,33 @@ export function ProjectReportsPage() {
   const project = projects.find((p) => p.id === projectId)
   const projectName = project?.name ?? projectId
 
-  const passed          = testCases.filter((t) => normalizeTestStatus(t.status) === 'Pass').length
-  const failed          = testCases.filter((t) => normalizeTestStatus(t.status) === 'Fail').length
-  const blocker         = testCases.filter((t) => normalizeTestStatus(t.status) === 'Blocker').length
-  const skipped         = testCases.filter((t) => normalizeTestStatus(t.status) === 'Skipped').length
-  const pending         = testCases.filter((t) => normalizeTestStatus(t.status) === 'Not Executed').length
-  const reported        = testCases.filter((t) => normalizeTestStatus(t.status) === 'Reported').length
-  const inProgress      = testCases.filter((t) => normalizeTestStatus(t.status) === 'Testing in Progress').length
-  const hold            = testCases.filter((t) => normalizeTestStatus(t.status) === 'Hold').length
-  const needClarif      = testCases.filter((t) => normalizeTestStatus(t.status) === 'Need Clarification').length
-  const total           = testCases.length
-  const executed        = total - pending
-  const coverage        = total ? Math.round((executed / total) * 100) : 0
-  const passRate        = total ? Math.round((passed / total) * 100) : 0
+  const metrics = getProjectReportMetrics({
+    project: project || { id: projectId, name: projectName },
+    testCases,
+    bugs,
+    runs
+  })
 
-  const critical = bugs.filter((b) => b.severity === 'Critical').length
-  const major    = bugs.filter((b) => b.severity === 'Major').length
-  const minor    = bugs.filter((b) => b.severity === 'Minor').length
-  const openBugs = bugs.filter((b) => b.status !== 'Closed').length
+  const {
+    passed,
+    failed,
+    blocker,
+    skipped,
+    pending,
+    reported,
+    inProgress,
+    hold,
+    needClarification: needClarif,
+    total,
+    coverage,
+    passRate,
+    critical,
+    major,
+    minor,
+    openBugs
+  } = metrics
+
+  const activeBugs = getActiveBugs(bugs)
 
   // Module breakdown — sorted worst first
   const moduleMap = testCases.reduce((acc, tc) => {
@@ -54,7 +64,7 @@ export function ProjectReportsPage() {
   const moduleStats = Object.entries(moduleMap).map(([mod, s]) => ({
     module: mod, ...s,
     passRate: s.total ? Math.round((s.passed / s.total) * 100) : 0,
-    openBugs: bugs.filter((b) => (b.module || 'Unassigned') === mod && b.status !== 'Closed').length,
+    openBugs: bugs.filter((b) => (b.module || 'Unassigned') === mod && isOpenBug(b)).length,
   })).sort((a, b) => {
     if (b.blocker !== a.blocker) return b.blocker - a.blocker
     if (b.failed !== a.failed) return b.failed - a.failed
@@ -133,7 +143,7 @@ export function ProjectReportsPage() {
 
       {/* ── Insights ───────────────────────────────────────────────────────── */}
       {insights.length > 0 && (
-        <section className="panel insights-panel" style={{ marginBottom: 18 }}>
+        <section className="panel insights-panel mb-md">
           <div className="section-header"><h2>Action insights</h2></div>
           <div className="insights-list">
             {insights.map((ins, i) => (
@@ -176,23 +186,23 @@ export function ProjectReportsPage() {
         <article className="panel chart-panel chart-panel--tall">
           <div className="section-header"><h2>Bugs by severity</h2></div>
           <div className="chart-bars chart-bars--solo">
-            <Bar label="Critical" value={critical} total={bugs.length} tone="failed" />
-            <Bar label="Major"    value={major}    total={bugs.length} tone="pending" />
-            <Bar label="Minor"    value={minor}    total={bugs.length} tone="passed" />
+            <Bar label="Critical" value={critical} total={activeBugs.length} tone="failed" />
+            <Bar label="Major"    value={major}    total={activeBugs.length} tone="pending" />
+            <Bar label="Minor"    value={minor}    total={activeBugs.length} tone="passed" />
           </div>
           <div className="bug-status-summary">
             {[['Open', 'failed'], ['In review', 'pending'], ['Closed', 'passed']].map(([s, tone]) => (
               <div key={s} className="bug-status-chip">
                 <span className={`bsc-dot bsc-dot--${tone}`} />
                 <span>{s}</span>
-                <strong>{bugs.filter((b) => b.status === s).length}</strong>
+                <strong>{bugs.filter((b) => normalizeBugStatus(b.status) === s).length}</strong>
               </div>
             ))}
           </div>
 
           {trendRuns.length >= 2 && (
             <>
-              <div className="section-header" style={{ marginTop: 18 }}><h2>Pass rate trend</h2></div>
+              <div className="section-header mt-md"><h2>Pass rate trend</h2></div>
               <div className="rpt-trend-row">
                 <RunTrend runs={trendRuns} />
                 <div className="rpt-trend-labels">
@@ -216,22 +226,22 @@ export function ProjectReportsPage() {
 
       {/* ── Module breakdown ───────────────────────────────────────────────── */}
       {moduleStats.length > 0 && (
-        <section className="panel" style={{ marginBottom: 18 }}>
+        <section className="panel mb-md">
           <div className="section-header">
             <h2>Module breakdown</h2>
             <StatusPill tone="neutral">{moduleStats.length} module{moduleStats.length !== 1 ? 's' : ''}</StatusPill>
           </div>
           <div className="table-wrap">
-            <table>
+            <table className="rpt-table">
               <thead>
                 <tr>
                   <th>Module</th>
-                  <th style={{ width: 60 }}>Cases</th>
-                  <th style={{ width: 55 }}>Pass</th>
-                  <th style={{ width: 70 }}>Fail+Bloc</th>
-                  <th style={{ width: 70 }}>Open bugs</th>
-                  <th style={{ width: 150 }}>Pass rate</th>
-                  <th style={{ width: 70 }}>Status</th>
+                  <th className="rpt-mod-col-cases">Cases</th>
+                  <th className="rpt-mod-col-pass">Pass</th>
+                  <th className="rpt-mod-col-fail">Fail+Bloc</th>
+                  <th className="rpt-mod-col-bugs">Open bugs</th>
+                  <th className="rpt-mod-col-rate">Pass rate</th>
+                  <th className="rpt-mod-col-status">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -247,7 +257,7 @@ export function ProjectReportsPage() {
                       <td className={problems > 0 ? 'metric-failed' : ''}>{problems || '—'}</td>
                       <td className={m.openBugs > 0 ? 'metric-failed' : ''}>{m.openBugs || '—'}</td>
                       <td>
-                        <div className="progress-cell" style={{ minWidth: 110 }}>
+                        <div className="progress-cell">
                           <span>{m.passRate}%</span>
                           <div className="progress-track">
                             <span style={{
@@ -277,18 +287,18 @@ export function ProjectReportsPage() {
           <div className="empty-table-row">No test runs yet. Start a test run to see history here.</div>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table className="rpt-table">
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Name</th>
                   <th>Build</th>
-                  <th style={{ width: 55 }}>Total</th>
-                  <th style={{ width: 55 }}>Pass</th>
-                  <th style={{ width: 55 }}>Fail</th>
-                  <th style={{ width: 55 }}>Blocker</th>
-                  <th style={{ width: 55 }}>Skip</th>
-                  <th style={{ width: 140 }}>Pass rate</th>
+                  <th className="rpt-run-col-total">Total</th>
+                  <th className="rpt-run-col-pass">Pass</th>
+                  <th className="rpt-run-col-fail">Fail</th>
+                  <th className="rpt-run-col-block">Blocker</th>
+                  <th className="rpt-run-col-skip">Skip</th>
+                  <th className="rpt-run-col-rate">Pass rate</th>
                   <th>By</th>
                 </tr>
               </thead>
@@ -311,7 +321,7 @@ export function ProjectReportsPage() {
                       <td>{run.blocker ?? 0}</td>
                       <td>{run.skipped ?? 0}</td>
                       <td>
-                        <div className="progress-cell" style={{ minWidth: 110 }}>
+                        <div className="progress-cell">
                           <span className={`status-text--${tone}`}>{rate}%</span>
                           <div className="progress-track">
                             <span style={{

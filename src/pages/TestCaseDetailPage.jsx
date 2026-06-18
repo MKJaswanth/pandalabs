@@ -11,6 +11,7 @@ import { useUser } from '../context/UserContext'
 import { useBugs } from '../hooks/useBugs'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useActivity } from '../hooks/useActivity'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { newId } from '../utils/id'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
@@ -27,9 +28,12 @@ export function TestCaseDetailPage() {
   const { testCases, updateTestCase, removeTestCase } = useTestCases(projectId)
   const { bugs, addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
+  const { getActivitiesByEntity } = useActivity()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()
+
+  const entityActivities = getActivitiesByEntity('test_case', testCaseId)
 
   const tc = testCases.find((t) => t.id === testCaseId)
   const [editing, setEditing] = useState(false)
@@ -242,11 +246,12 @@ export function TestCaseDetailPage() {
               <div className="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Title</th><th>Severity</th><th>Status</th></tr>
+                    <tr><th>Bug ID</th><th>Title</th><th>Severity</th><th>Status</th></tr>
                   </thead>
                   <tbody>
                     {linkedBugs.map((bug) => (
                       <tr key={bug.id}>
+                        <td className="mono tc-id">{bug.sourceBugId || bug.id.slice(0, 8).toUpperCase()}</td>
                         <td className="title-cell">
                           <Link to={`/projects/${projectId}/bugs`} className="bug-title-link">
                             {bug.title}
@@ -268,21 +273,28 @@ export function TestCaseDetailPage() {
 
           <div className="panel">
             <div className="section-header">
-              <h2>Activity log <span className="count-badge">{tc.history?.length ?? 0}</span></h2>
+              <h2>History <span className="count-badge">{entityActivities.length}</span></h2>
             </div>
-            {tc.history?.length ? (
+            {entityActivities.length ? (
               <div className="history-list history-list--panel">
-                {tc.history.slice().reverse().map((entry) => (
+                {entityActivities.map((entry) => (
                   <div key={entry.id} className="history-entry">
-                    <span className="history-details">{entry.details}</span>
+                    <span className="history-details">
+                      <strong>{entry.title}</strong>
+                      {entry.details && (
+                        <span className="history-detail-sub">
+                          {entry.details}
+                        </span>
+                      )}
+                    </span>
                     <span className="history-meta">
-                      {entry.user || 'Unknown'} • {new Date(entry.timestamp).toLocaleString()}
+                      {entry.actorName || 'Unknown user'} • {new Date(entry.createdAt).toLocaleString()}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="empty-table-row">No changes recorded yet.</div>
+              <div className="empty-table-row">No history recorded yet.</div>
             )}
           </div>
         </div>
@@ -304,7 +316,7 @@ export function TestCaseDetailPage() {
               </div>
             )}
           </dl>
-          <div style={{ marginTop: 16 }}>
+          <div className="mt-md">
             <Link className="text-link" to={`/projects/${projectId}/bugs`}>
               View all bugs →
             </Link>

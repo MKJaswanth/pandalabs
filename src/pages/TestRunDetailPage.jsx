@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useTestRuns } from '../hooks/useTestRuns'
+import { useBugs } from '../hooks/useBugs'
 import { STATUS_TONE } from '../utils/status'
 import { BugIcon, ShieldCheckIcon, CheckCircleIcon } from '../components/Icons'
 import { PassRing, Bar } from '../components/Charts'
@@ -21,6 +22,7 @@ function getFailureModules(cases = []) {
 export function TestRunDetailPage() {
   const { projectId, runId } = useParams()
   const { runs } = useTestRuns(projectId)
+  const { bugs } = useBugs(projectId)
 
   const run = runs.find((r) => r.id === runId)
 
@@ -36,7 +38,12 @@ export function TestRunDetailPage() {
 
   const rate = run.total ? Math.round((run.passed / run.total) * 100) : 0
   const failureModules = run.failureModules?.length ? run.failureModules : getFailureModules(run.cases)
-  const bugsLogged = run.bugsLogged ?? 0
+  // Only count/show bugs that still exist (a deleted bug is excluded from the
+  // useBugs list), so deleted links never appear as active here.
+  const activeBugIds = new Set(bugs.map((b) => b.id))
+  const bugsLogged = Array.isArray(run.linkedBugIds)
+    ? run.linkedBugIds.filter((id) => activeBugIds.has(id)).length
+    : (run.bugsLogged ?? 0)
   const passed = run.passed ?? 0
   const failed = run.failed ?? 0
   const blocker = run.blocker ?? 0
@@ -86,7 +93,7 @@ export function TestRunDetailPage() {
       </section>
 
       {/* Build, bugs logged, pass rate */}
-      <section className="metric-grid" style={{ marginBottom: 18 }}>
+      <section className="metric-grid mb-md">
         <article className="metric-card">
           <span>Build / Version</span><strong>{run.build || '-'}</strong>
         </article>
@@ -101,7 +108,7 @@ export function TestRunDetailPage() {
       </section>
 
       {/* Status distribution bars */}
-      <section className="panel chart-panel" style={{ marginBottom: 18 }}>
+      <section className="panel chart-panel mb-md">
         <div className="section-header">
           <h2>Status distribution</h2>
         </div>
@@ -115,7 +122,7 @@ export function TestRunDetailPage() {
       </section>
 
       {failureModules.length > 0 && (
-        <section className="panel run-detail-insights" style={{ marginBottom: 18 }}>
+        <section className="panel run-detail-insights mb-md">
           <div className="section-header">
             <h2><ShieldCheckIcon width={16} height={16} /> Failure modules</h2>
             <StatusPill tone="failed">{failureModules.length} module{failureModules.length !== 1 ? 's' : ''}</StatusPill>
@@ -163,8 +170,8 @@ export function TestRunDetailPage() {
                     </td>
                     <td style={{ whiteSpace: 'normal', maxWidth: 300 }}>
                       {tc.actual || <span className="text-muted">Not recorded</span>}
-                      {tc.bugId && (
-                        <div style={{ marginTop: 6 }}>
+                      {tc.bugId && activeBugIds.has(tc.bugId) && (
+                        <div className="mt-xs">
                           <Link to={`/projects/${projectId}/bugs`} className="text-link status-text--failed" style={{ fontSize: '0.85em', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
                             <BugIcon width={12} height={12} /> Bug linked
                           </Link>

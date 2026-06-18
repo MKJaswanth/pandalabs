@@ -6,17 +6,17 @@ import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
 
 export function useTestRuns(projectId) {
-  const [runs, setRuns] = useState(() => getTestRuns(projectId))
+  const [runs, setRuns] = useState(() => getTestRuns(projectId).filter((run) => !run.projectId || run.projectId === projectId))
   const remoteReady = useRemoteSync()
 
-  const refresh = useCallback(() => setRuns(getTestRuns(projectId)), [projectId])
+  const refresh = useCallback(() => setRuns(getTestRuns(projectId).filter((run) => !run.projectId || run.projectId === projectId)), [projectId])
 
   useEffect(() => {
     if (!remoteReady || !projectId) return undefined
     return subscribeTestRuns(projectId, (nextRuns) => {
       const merged = mergeById(getTestRunsRaw(projectId), nextRuns)
       setTestRunsCache(projectId, merged)
-      setRuns(merged.filter((run) => !isDeleted(run)))
+      setRuns(merged.filter((run) => !isDeleted(run) && (!run.projectId || run.projectId === projectId)))
     })
   }, [projectId, remoteReady])
 

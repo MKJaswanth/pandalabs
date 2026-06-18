@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { Modal } from './Modal'
 import { parseTestCaseFile, rowToTestCase } from '../utils/parseTestCaseFile'
 import { CheckIcon, XIcon, DownloadIcon } from './Icons'
+import { addActivity } from '../utils/activity'
 
 const ACCEPT = '.xlsx,.xls,.csv'
 
@@ -297,6 +299,7 @@ const IMPORT_TABS = [
 ]
 
 export function BulkUploadModal({ existingTestCases = [], onImport, onUpdate, onClose }) {
+  const { projectId } = useParams()
   const [step, setStep]       = useState(0)   // 0=upload 1=preview 2=done
   const [rows, setRows]       = useState([])
   const [filename, setFilename] = useState('')
@@ -311,10 +314,22 @@ export function BulkUploadModal({ existingTestCases = [], onImport, onUpdate, on
   const updateRows = validRows.filter((r) => r.action === 'update')
 
   const handleFile = (buffer, name) => {
-    const { rows: parsed } = parseTestCaseFile(buffer, name)
-    setFilename(name)
-    setRows(prepareRows(parsed, existingTestCases))
-    setStep(1)
+    try {
+      const { rows: parsed } = parseTestCaseFile(buffer, name)
+      setFilename(name)
+      setRows(prepareRows(parsed, existingTestCases))
+      setStep(1)
+    } catch (err) {
+      console.error('[bulkUpload] Parse failed:', err)
+      addActivity({
+        entityType: 'import',
+        projectId,
+        action: 'imported',
+        title: `CSV import failed: ${err.message || 'Invalid columns'}`,
+        metadata: { filename: name, error: err.message }
+      })
+      throw err
+    }
   }
 
   const setRowAction = (rowNum, action) => {
@@ -332,6 +347,7 @@ export function BulkUploadModal({ existingTestCases = [], onImport, onUpdate, on
     createRows.forEach((r, i) => {
       const tc = rowToTestCase(r.data)
       tc.createdAt = new Date(baseTime + i).toISOString()
+      tc.skipActivityLog = true
       onImport(tc)
     })
     updateRows.forEach((r) => {
@@ -345,8 +361,26 @@ export function BulkUploadModal({ existingTestCases = [], onImport, onUpdate, on
         assignee: existing.assignee,
         priority: existing.priority ?? incoming.priority,
         updatedAt: now,
+        skipActivityLog: true,
       })
     })
+
+    const totalChanges = createRows.length + updateRows.length
+    if (totalChanges > 0) {
+      addActivity({
+        entityType: 'import',
+        projectId,
+        action: 'imported',
+        title: `${totalChanges} test cases imported`,
+        details: `${createRows.length} created, ${updateRows.length} updated from bulk upload.`,
+        metadata: {
+          filename,
+          createdCount: createRows.length,
+          updatedCount: updateRows.length,
+          source: importTab === 'google' ? 'Google Sheet' : 'CSV/Excel file',
+        }
+      })
+    }
 
     setSummary({
       total: rows.length,

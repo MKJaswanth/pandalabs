@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { Modal } from './Modal'
 import { CheckIcon, XIcon, DownloadIcon } from './Icons'
 import { parseBugFileBuffer, rowToBug } from '../utils/parseBugFile'
 import { downloadBugTemplate } from '../utils/export'
+import { addActivity } from '../utils/activity'
 
 const ACCEPT = '.xlsx,.xls,.csv'
 
@@ -243,6 +245,7 @@ const IMPORT_TABS = [
 ]
 
 export function BugBulkUploadModal({ existingBugs = [], testCases = [], onImport, onClose }) {
+  const { projectId } = useParams()
   const [step, setStep]           = useState(0)
   const [rows, setRows]           = useState([])
   const [filename, setFilename]   = useState('')
@@ -254,10 +257,21 @@ export function BugBulkUploadModal({ existingBugs = [], testCases = [], onImport
   const duplicateRows = rows.filter((r) => r.duplicate)
 
   const handleFile = (buffer, name) => {
-    const { rows: parsed } = parseBugFileBuffer(buffer, name)
-    setFilename(name)
-    setRows(prepareRows(parsed, existingBugs))
-    setStep(1)
+    try {
+      const { rows: parsed } = parseBugFileBuffer(buffer, name)
+      setFilename(name)
+      setRows(prepareRows(parsed, existingBugs))
+      setStep(1)
+    } catch (err) {
+      console.error('[bugBulkUpload] Parse failed:', err)
+      addActivity({
+        entityType: 'import',
+        projectId,
+        action: 'imported',
+        title: `Bug CSV import failed: ${err.message || 'Invalid format'}`,
+        metadata: { filename: name, error: err.message }
+      })
+    }
   }
 
   const setRowAction = (rowNum, action) => {
@@ -268,8 +282,25 @@ export function BugBulkUploadModal({ existingBugs = [], testCases = [], onImport
     validRows.forEach((r) => {
       const bug = rowToBug(r.data)
       bug.linkedTestCase = resolveLinkedTc(r.data.linkedTcId, testCases)
+      bug.skipActivityLog = true
       onImport(bug)
     })
+
+    if (validRows.length > 0) {
+      addActivity({
+        entityType: 'import',
+        projectId,
+        action: 'imported',
+        title: `${validRows.length} bugs imported`,
+        details: `${validRows.length} bugs created from bulk upload.`,
+        metadata: {
+          filename,
+          count: validRows.length,
+          source: importTab === 'google' ? 'Google Sheet' : 'CSV/Excel file',
+        }
+      })
+    }
+
     setSummary({ total: rows.length, created: validRows.length, skipped: rows.length - validRows.length })
     setStep(2)
   }

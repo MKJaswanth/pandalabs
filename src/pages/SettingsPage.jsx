@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { XIcon, CheckIcon } from '../components/Icons'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { useProjects } from '../hooks/useProjects'
 import { useTeamMembers } from '../hooks/useTeamMembers'
+import { useActivity } from '../hooks/useActivity'
 
 export function SettingsPage() {
   const { projectId } = useParams()
   const { projects, updateProject, removeProject } = useProjects()
   const { members, addMember } = useTeamMembers()
+  const { getActivitiesByProject } = useActivity()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()
@@ -20,6 +22,8 @@ export function SettingsPage() {
   const [description, setDescription] = useState(project?.description ?? '')
   const [newMemberName, setNewMemberName] = useState('')
   const [saved, setSaved] = useState(false)
+
+  const projectActivities = getActivitiesByProject(projectId).slice(0, 10)
 
   if (!project) {
     return (
@@ -166,6 +170,36 @@ export function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="panel settings-section">
+        <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2>Recent Activity</h2>
+          <Link className="text-link" to={`/activity?projectId=${projectId}`}>
+            View all activity →
+          </Link>
+        </div>
+        <div className="settings-body" style={{ display: 'block' }}>
+          {projectActivities.length === 0 ? (
+            <p className="settings-empty">No recent activity for this project.</p>
+          ) : (
+            <div className="settings-activity-list">
+            {projectActivities.map((act) => (
+              <div key={act.id} className="settings-activity-item">
+                <div className="settings-activity-header">
+                  <strong className="settings-activity-title">{act.title}</strong>
+                  <span className="settings-activity-time">
+                    {new Date(act.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <div className="settings-activity-meta">
+                  By <strong>{act.actorName}</strong> {act.details ? `— ${act.details}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+          )}
         </div>
       </section>
 

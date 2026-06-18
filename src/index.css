@@ -14,17 +14,32 @@
   --success: #23764f;
   --danger: #bb3b37;
   --warning: #9a6a14;
+  --info: #1f5fb0;
+  --info-soft: #eaf1fb;
   --shadow-sm: 0 1px 2px rgba(23, 32, 31, 0.04);
-  --shadow-md: 0 10px 24px rgba(23, 32, 31, 0.07);
-  --shadow-lg: 0 18px 42px rgba(23, 32, 31, 0.11);
+  --shadow-md: 0 4px 12px rgba(23, 32, 31, 0.06);
+  --shadow-lg: 0 12px 28px rgba(23, 32, 31, 0.10);
+
+  /* Radius scale — 8px is the system default; 12px reserved for surfaces */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
   --sans: Aptos, 'Segoe UI', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     sans-serif;
   --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
 
   /* Derived tokens */
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
-  --accent-glow-sm: 0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent);
-  --accent-glow-md: 0 8px 22px color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-glow-sm: none;
+  --accent-glow-md: none;
 
   color-scheme: light;
   color: var(--text-muted);
@@ -58,8 +73,10 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   letter-spacing: 0;
+  font: inherit;
 }
 
 /* ── Brand selection colour ─────────────────────────────── */
@@ -87,9 +104,39 @@ select {
   background: var(--text-soft);
 }
 
+/* ── Spacing utility classes ─────────────────────────────── */
+.mb-0   { margin-bottom: 0; }
+.mb-xs  { margin-bottom: 4px; }
+.mb-sm  { margin-bottom: 8px; }
+.mb-md  { margin-bottom: 16px; }
+.mb-lg  { margin-bottom: 24px; }
+.mb-xl  { margin-bottom: 32px; }
+.mt-0   { margin-top: 0; }
+.mt-xs  { margin-top: 4px; }
+.mt-sm  { margin-top: 8px; }
+.mt-md  { margin-top: 16px; }
+.mt-lg  { margin-top: 24px; }
+.mt-xl  { margin-top: 32px; }
+.pt-0   { padding-top: 0; }
+.pt-sm  { padding-top: 8px; }
+.pt-md  { padding-top: 16px; }
+.pb-0   { padding-bottom: 0; }
+.pb-sm  { padding-bottom: 8px; }
+.pb-md  { padding-bottom: 16px; }
+.p-sm   { padding: 8px; }
+.p-md   { padding: 16px; }
+.px-md  { padding-left: 16px; padding-right: 16px; }
+.py-md  { padding-top: 16px; padding-bottom: 16px; }
+.ml-xs  { margin-left: 4px; }
+.ml-sm  { margin-left: 8px; }
+.ml-md  { margin-left: 16px; }
+.mr-xs  { margin-right: 4px; }
+.mr-sm  { margin-right: 8px; }
+.mr-md  { margin-right: 16px; }
+
 /* ── Keyframes ──────────────────────────────────────────── */
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: none; }
 }
 
@@ -99,6 +146,6 @@ select {
 }
 
 @keyframes modal-in {
-  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
   to   { opacity: 1; transform: none; }
 }

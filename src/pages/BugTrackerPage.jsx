@@ -4,16 +4,16 @@ import { XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, So
 import { Link, useParams } from 'react-router-dom'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { StatusPill } from '../components/StatusPill'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { useUser } from '../context/UserContext'
 import { useBugs } from '../hooks/useBugs'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useActivity } from '../hooks/useActivity'
 import { useSortable } from '../hooks/useSortable'
 import { newId } from '../utils/id'
-import { downloadBugTemplate } from '../utils/export'
+import { downloadBugTemplate, getReporterName } from '../utils/export'
 import { BugBulkUploadModal } from '../components/BugBulkUploadModal'
 import { DownloadIcon, UploadIcon } from '../components/Icons'
 
@@ -50,7 +50,7 @@ const blank = (prefillTcId = '') => ({
 
 const shortId = (id) => id.slice(0, 8).toUpperCase()
 
-function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submitLabel, history = [] }) {
+function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submitLabel, history = [], activities = [] }) {
   const set = (key) => (e) => setForm((c) => ({ ...c, [key]: e.target.value }))
 
   return (
@@ -187,18 +187,36 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
         />
       </div>
 
-      {history.length > 0 && (
+      {(activities.length > 0 || history.length > 0) && (
         <div className="bug-history">
           <h3>Activity log</h3>
           <div className="history-list">
-            {history.slice().reverse().map((entry) => (
-              <div key={entry.id} className="history-entry">
-                <span className="history-details">{entry.details}</span>
-                <span className="history-meta">
-                  {entry.user} • {new Date(entry.timestamp).toLocaleString()}
-                </span>
-              </div>
-            ))}
+            {activities.length > 0 ? (
+              activities.map((entry) => (
+                <div key={entry.id} className="history-entry">
+                  <span className="history-details">
+                    <strong>{entry.title}</strong>
+                    {entry.details && (
+                      <span className="history-detail-sub">
+                        {entry.details}
+                      </span>
+                    )}
+                  </span>
+                  <span className="history-meta">
+                    {entry.actorName || 'Unknown user'} • {new Date(entry.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              ))
+            ) : (
+              history.slice().reverse().map((entry) => (
+                <div key={entry.id} className="history-entry">
+                  <span className="history-details">{entry.details}</span>
+                  <span className="history-meta">
+                    {entry.user || 'Unknown user'} • {new Date(entry.timestamp).toLocaleString()}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -217,6 +235,7 @@ export function BugTrackerPage() {
   const { bugs, addBug, removeBug, updateBug } = useBugs(projectId)
   const { testCases } = useTestCases(projectId)
   const { members } = useTeamMembers()
+  const { getActivitiesByEntity } = useActivity()
   const confirm = useConfirm()
   const toast = useToast()
 
@@ -255,7 +274,7 @@ export function BugTrackerPage() {
       environment:      bug.environment || '',
       build:            bug.build || '',
       assignedTo:       bug.assignedTo || '',
-      reportedBy:       bug.reportedBy || '',
+      reportedBy:       getReporterName(bug.reportedBy, bug.reportedByName),
       reportedDate:     bug.reportedDate || today(),
       fixedInBuild:     bug.fixedInBuild || '',
       retestStatus:     bug.retestStatus || 'Not Retested',
@@ -312,6 +331,26 @@ export function BugTrackerPage() {
       'status_change',
       `Status changed from ${bug.status} to ${newStatus}`,
       bug.status, newStatus
+    )
+    updateBug(updated)
+  }
+
+  const handleInlinePriorityChange = (bug, newPriority) => {
+    const updated = recordHistory(
+      { ...bug, priority: newPriority },
+      'priority_change',
+      `Priority changed from ${bug.priority ?? 'Medium'} to ${newPriority}`,
+      bug.priority ?? 'Medium', newPriority
+    )
+    updateBug(updated)
+  }
+
+  const handleInlineSeverityChange = (bug, newSeverity) => {
+    const updated = recordHistory(
+      { ...bug, severity: newSeverity },
+      'severity_change',
+      `Severity changed from ${bug.severity} to ${newSeverity}`,
+      bug.severity, newSeverity
     )
     updateBug(updated)
   }
@@ -402,10 +441,20 @@ export function BugTrackerPage() {
         ) : (
           <>
           <div className="table-wrap">
-            <table>
+            <table className="bug-table">
+              <colgroup>
+                <col className="bug-col-id" />
+                <col className="bug-col-title" />
+                <col className="bug-col-module" />
+                <col className="bug-col-severity" />
+                <col className="bug-col-priority" />
+                <col className="bug-col-status" />
+                <col className="bug-col-linked" />
+                <col className="bug-col-actions" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>Bug ID</th>
                   <SortTh col="title"    label="Title"    active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
                   <SortTh col="module"   label="Module"   active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
                   <SortTh col="severity" label="Severity" active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
@@ -430,16 +479,28 @@ export function BugTrackerPage() {
                     </td>
                     <td>{bug.module || '—'}</td>
                     <td>
-                      <StatusPill tone={severityTone[bug.severity]}>{bug.severity}</StatusPill>
-                    </td>
-                    <td>
-                      <span className={`priority-badge ${priorityClass[bug.priority ?? 'Medium'] ?? 'priority-med'}`}>
-                        {bug.priority ?? 'Medium'}
-                      </span>
+                      <select
+                        className={`inline-select status-select status-select--${severityTone[bug.severity] || 'neutral'}`}
+                        value={bug.severity}
+                        aria-label="Bug severity"
+                        onChange={(e) => handleInlineSeverityChange(bug, e.target.value)}
+                      >
+                        {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
+                      </select>
                     </td>
                     <td>
                       <select
-                        className="inline-select"
+                        className={`inline-select status-select ${priorityClass[bug.priority ?? 'Medium'] ?? 'priority-med'}`}
+                        value={bug.priority ?? 'Medium'}
+                        aria-label="Bug priority"
+                        onChange={(e) => handleInlinePriorityChange(bug, e.target.value)}
+                      >
+                        {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="inline-select status-select status-select--neutral"
                         value={bug.status}
                         aria-label="Bug status"
                         onChange={(e) => handleInlineStatusChange(bug, e.target.value)}
@@ -482,9 +543,16 @@ export function BugTrackerPage() {
                 <div className="mobile-card-header">
                   <span className="mono tc-id">{bug.sourceBugId || shortId(bug.id)}</span>
                   <div className="mobile-card-header-badges">
-                    <StatusPill tone={severityTone[bug.severity]}>{bug.severity}</StatusPill>
                     <select
-                      className="inline-select"
+                      className={`inline-select status-select status-select--${severityTone[bug.severity] || 'neutral'}`}
+                      value={bug.severity}
+                      aria-label="Bug severity"
+                      onChange={(e) => handleInlineSeverityChange(bug, e.target.value)}
+                    >
+                      {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
+                    </select>
+                    <select
+                      className="inline-select status-select status-select--neutral"
                       value={bug.status}
                       aria-label="Bug status"
                       onChange={(e) => handleInlineStatusChange(bug, e.target.value)}
@@ -498,6 +566,23 @@ export function BugTrackerPage() {
                 </h3>
                 {bug.description && <p className="mobile-card-desc">{bug.description}</p>}
                 <div className="mobile-card-details">
+                  <div>
+                    <span>Severity:</span>
+                    <strong>{bug.severity}</strong>
+                  </div>
+                  <div>
+                    <span>Priority:</span>
+                    <strong>
+                      <select
+                        className={`inline-select status-select ${priorityClass[bug.priority ?? 'Medium'] ?? 'priority-med'}`}
+                        value={bug.priority ?? 'Medium'}
+                        aria-label="Bug priority"
+                        onChange={(e) => handleInlinePriorityChange(bug, e.target.value)}
+                      >
+                        {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                      </select>
+                    </strong>
+                  </div>
                   <div>
                     <span>Module:</span>
                     <strong>{bug.module || '—'}</strong>
@@ -585,6 +670,7 @@ export function BugTrackerPage() {
             testCases={testCases}
             members={members}
             history={editing.history}
+            activities={getActivitiesByEntity('bug', editing.id)}
             onCancel={() => setEditing(null)}
             onSubmit={handleEdit}
             submitLabel="Save changes"
