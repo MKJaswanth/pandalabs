@@ -21,6 +21,14 @@ dist-ssr
 # Embedded submodule / local tools
 codex-skills/
 
+# Firebase CLI deploy cache (generated)
+.firebase/
+
+# Local scratch / generated artifacts
+.codex_spreadsheet_work/
+outputs/
+workflow.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
