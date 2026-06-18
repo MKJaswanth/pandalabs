@@ -28,14 +28,24 @@ export function TestCaseDetailPage() {
   const { testCases, updateTestCase, removeTestCase } = useTestCases(projectId)
   const { bugs, addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
-  const { getActivitiesByEntity } = useActivity()
+  const { activities } = useActivity()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()
 
-  const entityActivities = getActivitiesByEntity('test_case', testCaseId)
-
   const tc = testCases.find((t) => t.id === testCaseId)
+
+  const resolveUserUid = (uid) => {
+    if (!uid) return ''
+    const isUid = /^[a-zA-Z0-9]{20,36}$/.test(uid)
+    if (!isUid) return uid
+    const act = activities.find((a) => a.actorId === uid)
+    if (act && act.actorName) return act.actorName
+    const member = members.find((m) => m.id === uid)
+    if (member) return member.name
+    return uid
+  }
+
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(null)
   const [showLogBug, setShowLogBug] = useState(false)
@@ -271,32 +281,6 @@ export function TestCaseDetailPage() {
             )}
           </div>
 
-          <div className="panel">
-            <div className="section-header">
-              <h2>History <span className="count-badge">{entityActivities.length}</span></h2>
-            </div>
-            {entityActivities.length ? (
-              <div className="history-list history-list--panel">
-                {entityActivities.map((entry) => (
-                  <div key={entry.id} className="history-entry">
-                    <span className="history-details">
-                      <strong>{entry.actorName || 'System'}</strong>: {entry.title}
-                      {entry.details && (
-                        <span className="history-detail-sub">
-                          {entry.details}
-                        </span>
-                      )}
-                    </span>
-                    <span className="history-meta">
-                      {entry.actorName || 'Unknown user'} • {new Date(entry.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-table-row">No history recorded yet.</div>
-            )}
-          </div>
         </div>
 
         <aside className="panel detail-aside">
@@ -305,16 +289,20 @@ export function TestCaseDetailPage() {
             <div><dt>Assignee</dt><dd>{tc.assignee || '—'}</dd></div>
             <div><dt>Actual result</dt><dd className={tc.actual ? '' : 'text-muted'}>{tc.actual || 'Not recorded'}</dd></div>
             <div><dt>Bugs</dt><dd>{linkedBugs.length} linked</dd></div>
-            <div><dt>Created</dt><dd>{tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—'}</dd></div>
-            {tc.updatedAt && (
-              <div>
-                <dt>Last update</dt>
-                <dd>
-                  {new Date(tc.updatedAt).toLocaleDateString()}
-                  {tc.updatedBy && <span className="text-muted"> by {tc.updatedBy}</span>}
-                </dd>
-              </div>
-            )}
+            <div>
+              <dt>Created</dt>
+              <dd>
+                {tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—'}
+                {tc.createdBy && <span className="text-muted"> by {resolveUserUid(tc.createdBy)}</span>}
+              </dd>
+            </div>
+            <div>
+              <dt>Last update</dt>
+              <dd>
+                {tc.updatedAt ? new Date(tc.updatedAt).toLocaleDateString() : (tc.createdAt ? new Date(tc.createdAt).toLocaleDateString() : '—')}
+                {(tc.updatedBy || tc.createdBy) && <span className="text-muted"> by {resolveUserUid(tc.updatedBy || tc.createdBy)}</span>}
+              </dd>
+            </div>
           </dl>
           <div className="mt-md">
             <Link className="text-link" to={`/projects/${projectId}/bugs`}>
