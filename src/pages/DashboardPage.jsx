@@ -253,12 +253,11 @@ export function DashboardPage() {
                 <div className="dashboard-list-item" key={act.id}>
                   <div className="list-item-main">
                     <span className="list-item-title" style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                      {act.title}
+                      <strong>{act.actorName || 'System'}</strong>: {act.title}
                     </span>
                   </div>
                   <div className="list-item-meta">
-                    <span className="meta-assignee">{act.actorName || 'System'}</span>
-                    <span className="meta-date"> · {new Date(act.createdAt).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="meta-date">{new Date(act.createdAt).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 </div>
               ))}

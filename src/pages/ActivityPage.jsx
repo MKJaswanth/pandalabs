@@ -197,7 +197,9 @@ export function ActivityPage() {
                         </StatusPill>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{act.title}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          <strong>{act.actorName || 'System'}</strong>: {act.title}
+                        </div>
                         {act.details && (
                           <div className="text-muted mt-xs">
                             {act.details}
@@ -241,7 +243,7 @@ export function ActivityPage() {
                     </div>
                   </div>
                   <h3 className="mobile-card-title" style={{ fontSize: '14px', fontWeight: 600, margin: '6px 0' }}>
-                    {act.title}
+                    <strong>{act.actorName || 'System'}</strong>: {act.title}
                   </h3>
                   <div className="mobile-card-details">
                     <div>
