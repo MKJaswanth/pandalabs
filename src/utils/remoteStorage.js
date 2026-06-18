@@ -7,6 +7,9 @@ import {
   onSnapshot,
   setDoc,
   writeBatch,
+  query,
+  orderBy,
+  limit,
 } from 'firebase/firestore'
 import { db, defaultWorkspaceId, isFirebaseEnabled, auth } from './firebase'
 import { setSyncStatus } from './syncStatus'
@@ -250,8 +253,27 @@ export async function logActivityRemote(activity) {
   }
 }
 
-export const subscribeActivity = (onChange) =>
-  subscribe([...workspacePath(), 'activity'], onChange, byCreatedAtDesc)
+export const subscribeActivity = (onChange) => {
+  ensureFirebase()
+  const q = query(
+    collection(db, ...workspacePath(), 'activity'),
+    orderBy('createdAt', 'desc'),
+    limit(200)
+  )
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      setSyncStatus('synced')
+      if (subscriptionsSuppressed) return
+      const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
+      onChange(rows)
+    },
+    (error) => {
+      setSyncStatus('error')
+      console.error('[remoteStorage] Activity snapshot subscription failed:', error)
+    }
+  )
+}
 
 export const subscribeRunDrafts = (projectId, onChange) =>
   subscribe([...projectPath(projectId), 'runDrafts'], onChange, byCreatedAtDesc)

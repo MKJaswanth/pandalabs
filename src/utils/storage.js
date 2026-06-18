@@ -244,12 +244,17 @@ export const deleteTeamMember = (id) =>
 // Activities
 export const activitiesKey = () => `${cachePrefix()}activities`
 export const getActivitiesRaw = () => get(activitiesKey()) ?? []
-export const setActivities = (activities) => set(activitiesKey(), activities)
+export const setActivities = (activities) => {
+  const pruned = activities.slice(0, 200)
+  set(activitiesKey(), pruned)
+}
 export const saveActivity = (activity) => {
   const list = getActivitiesRaw()
   if (!list.some((a) => a.id === activity.id)) {
     list.push(activity)
-    set(activitiesKey(), list)
+    list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    const pruned = list.slice(0, 200)
+    set(activitiesKey(), pruned)
   }
 }
 
