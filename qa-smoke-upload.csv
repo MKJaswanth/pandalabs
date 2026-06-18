@@ -1,5 +1,0 @@
-TC ID,Module,Test Scenario,Test Case Title,Pre-conditions,Test Steps,Test Data,Expected Result,Actual Result,Status,Dev Remarks,QA Remarks
-TC_BULK_001,Upload,CSV import,Uploaded login smoke,User exists,"1. Open login
-2. Enter credentials
-3. Submit",demo user,Dashboard opens,,Pass,,Looks ok
-TC_BULK_002,Checkout,Validation,Missing expected row,Cart has item,"Open cart; Click checkout",cart item,,Actual blank,Not Executed,,
