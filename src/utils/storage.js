@@ -242,10 +242,11 @@ export const deleteTeamMember = (id) =>
   set(teamMembersKey(), markDeleted(getTeamMembersRaw(), id))
 
 // Activities
+export const ACTIVITY_HISTORY_LIMIT = 1000
 export const activitiesKey = () => `${cachePrefix()}activities`
 export const getActivitiesRaw = () => get(activitiesKey()) ?? []
 export const setActivities = (activities) => {
-  const pruned = activities.slice(0, 200)
+  const pruned = activities.slice(0, ACTIVITY_HISTORY_LIMIT)
   set(activitiesKey(), pruned)
 }
 export const saveActivity = (activity) => {
@@ -253,8 +254,7 @@ export const saveActivity = (activity) => {
   if (!list.some((a) => a.id === activity.id)) {
     list.push(activity)
     list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    const pruned = list.slice(0, 200)
+    const pruned = list.slice(0, ACTIVITY_HISTORY_LIMIT)
     set(activitiesKey(), pruned)
   }
 }
-

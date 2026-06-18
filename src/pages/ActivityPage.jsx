@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { useActivity } from '../hooks/useActivity'
 import { useProjects } from '../hooks/useProjects'
 import { StatusPill } from '../components/StatusPill'
+import { ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
+
+const ACTIVITY_PAGE_SIZES = [25, 50, 100]
 
 const ENTITY_TYPES = [
   { value: 'project', label: 'Projects' },
@@ -53,10 +56,24 @@ export function ActivityPage() {
   const filterEntity = searchParams.get('entityType') || ''
   const filterAction = searchParams.get('action') || ''
   const filterSearch = searchParams.get('q') || ''
+  const filterActor = searchParams.get('actor') || ''
+  const filterFrom = searchParams.get('from') || ''
+  const filterTo = searchParams.get('to') || ''
+  const [pageSize, setPageSize] = useState(25)
+  const [page, setPage] = useState(1)
 
   const projectMap = useMemo(() => {
     return new Map(projects.map((p) => [p.id, p.name]))
   }, [projects])
+
+  const actorOptions = useMemo(() => {
+    const seen = new Map()
+    activities.forEach((act) => {
+      const actor = act.actorName || act.userName || 'System'
+      if (!seen.has(actor)) seen.set(actor, actor)
+    })
+    return [...seen.values()].sort((a, b) => a.localeCompare(b))
+  }, [activities])
 
   const getProjectName = (act) => {
     if (!act.projectId) return 'Global'
@@ -75,14 +92,25 @@ export function ActivityPage() {
     const next = new URLSearchParams(searchParams)
     if (val) next.set(key, val)
     else next.delete(key)
+    setPage(1)
     setSearchParams(next)
   }
 
   const filteredActivities = useMemo(() => {
+    const fromTime = filterFrom ? new Date(`${filterFrom}T00:00:00`).getTime() : null
+    const toTime = filterTo ? new Date(`${filterTo}T23:59:59.999`).getTime() : null
+
     return activities.filter((act) => {
       if (filterProject && act.projectId !== filterProject) return false
       if (filterEntity && act.entityType !== filterEntity) return false
       if (filterAction && act.action !== filterAction) return false
+      if (filterActor && (act.actorName || act.userName || 'System') !== filterActor) return false
+      if (fromTime || toTime) {
+        const createdTime = new Date(act.createdAt).getTime()
+        if (Number.isNaN(createdTime)) return false
+        if (fromTime && createdTime < fromTime) return false
+        if (toTime && createdTime > toTime) return false
+      }
       if (filterSearch) {
         const query = filterSearch.toLowerCase()
         const matchTitle = act.title?.toLowerCase().includes(query)
@@ -92,9 +120,16 @@ export function ActivityPage() {
       }
       return true
     })
-  }, [activities, filterProject, filterEntity, filterAction, filterSearch])
+  }, [activities, filterProject, filterEntity, filterAction, filterActor, filterFrom, filterTo, filterSearch])
 
-  const hasActiveFilters = filterProject || filterEntity || filterAction || filterSearch
+  const totalPages = Math.max(1, Math.ceil(filteredActivities.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const startIndex = (currentPage - 1) * pageSize
+  const paginatedActivities = filteredActivities.slice(startIndex, startIndex + pageSize)
+  const startItem = filteredActivities.length === 0 ? 0 : startIndex + 1
+  const endItem = Math.min(startIndex + pageSize, filteredActivities.length)
+
+  const hasActiveFilters = filterProject || filterEntity || filterAction || filterActor || filterFrom || filterTo || filterSearch
 
   return (
     <>
@@ -144,17 +179,45 @@ export function ActivityPage() {
               <option key={a.value} value={a.value}>{a.label}</option>
             ))}
           </select>
+          <select
+            value={filterActor}
+            onChange={(e) => setFilter('actor', e.target.value)}
+            aria-label="Filter by actor"
+            className={filterActor ? 'filter-active' : ''}
+          >
+            <option value="">All Users</option>
+            {actorOptions.map((actor) => (
+              <option key={actor} value={actor}>{actor}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={filterFrom}
+            onChange={(e) => setFilter('from', e.target.value)}
+            aria-label="Filter from date"
+            className={filterFrom ? 'filter-active' : ''}
+          />
+          <input
+            type="date"
+            value={filterTo}
+            onChange={(e) => setFilter('to', e.target.value)}
+            aria-label="Filter to date"
+            className={filterTo ? 'filter-active' : ''}
+          />
           <div className="toolbar-info">
             {hasActiveFilters && (
               <button
                 className="filter-clear-btn"
                 type="button"
-                onClick={() => setSearchParams({})}
+                onClick={() => {
+                  setPage(1)
+                  setSearchParams({})
+                }}
               >
                 Clear filters
               </button>
             )}
-            <span>{filteredActivities.length} of {activities.length}</span>
+            <span>{startItem}-{endItem} of {filteredActivities.length} filtered</span>
           </div>
         </div>
       </section>
@@ -182,7 +245,7 @@ export function ActivityPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredActivities.map((act) => {
+                {paginatedActivities.map((act) => {
                   const projName = getProjectName(act)
                   const displayTime = new Date(act.createdAt).toLocaleString()
 
@@ -226,7 +289,7 @@ export function ActivityPage() {
           </div>
 
           <div className="mobile-card-list">
-            {filteredActivities.map((act) => {
+            {paginatedActivities.map((act) => {
               const projName = getProjectName(act)
               const displayTime = new Date(act.createdAt).toLocaleString()
 
@@ -278,6 +341,46 @@ export function ActivityPage() {
                 </div>
               )
             })}
+          </div>
+
+          <div className="table-pagination" aria-label="Activity pagination">
+            <div className="rows-per-page">
+              <span>Rows</span>
+              <select
+                aria-label="Activity rows per page"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value))
+                  setPage(1)
+                }}
+              >
+                {ACTIVITY_PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </div>
+            <span className="pagination-summary">
+              {startItem}-{endItem} of {filteredActivities.length}
+            </span>
+            <div className="pagination-actions">
+              <button
+                className="secondary-button icon-button"
+                type="button"
+                aria-label="Previous activity page"
+                disabled={currentPage === 1}
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
+              >
+                <ChevronLeftIcon width={14} height={14} />
+              </button>
+              <span className="page-indicator">{currentPage} / {totalPages}</span>
+              <button
+                className="secondary-button icon-button"
+                type="button"
+                aria-label="Next activity page"
+                disabled={currentPage === totalPages}
+                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              >
+                <ChevronRightIcon width={14} height={14} />
+              </button>
+            </div>
           </div>
         </section>
       )}
