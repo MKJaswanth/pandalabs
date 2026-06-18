@@ -280,7 +280,7 @@ export function TestCaseDetailPage() {
                 {entityActivities.map((entry) => (
                   <div key={entry.id} className="history-entry">
                     <span className="history-details">
-                      <strong>{entry.title}</strong>
+                      <strong>{entry.actorName || 'System'}</strong>: {entry.title}
                       {entry.details && (
                         <span className="history-detail-sub">
                           {entry.details}
