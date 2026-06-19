@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useUser } from '../context/UserContext'
 import { useProjects } from '../hooks/useProjects'
@@ -9,8 +9,9 @@ import { getStoragePercent, getStorageStatus } from '../utils/storageQuota'
 import { useRemoteSync } from '../hooks/useRemoteSync'
 import { getProjectReportMetrics } from '../utils/reportMetrics'
 import { usePresence } from '../hooks/usePresence'
-import { ChevronDownIcon, EyeIcon } from './Icons'
+import { ChevronDownIcon, EyeIcon, BugIcon, CheckCircleIcon } from './Icons'
 import { useToast } from '../context/useToast'
+import { useNotifications } from '../hooks/useNotifications'
 
 const globalNav = [
   { label: 'Dashboard', to: '/dashboard', icon: 'dashboard' },
@@ -218,6 +219,108 @@ function ProjectPresence({ projectId, currentPage }) {
   )
 }
 
+function BellIcon(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.0" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  )
+}
+
+function NotificationCenter() {
+  const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications()
+  const [open, setOpen] = useState(false)
+  const dropdownRef = useRef(null)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!open) return undefined
+    const handleOutsideClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [open])
+
+  const handleNotificationClick = (n) => {
+    markAsRead(n.id)
+    setOpen(false)
+    if (n.type === 'bug_assigned') {
+      navigate(`/projects/${n.projectId}/bugs`)
+    } else if (n.type === 'test_case_assigned') {
+      navigate(`/projects/${n.projectId}/test-cases/${n.entityId}`)
+    }
+  }
+
+  return (
+    <div className="notification-center-wrap" ref={dropdownRef}>
+      <button
+        type="button"
+        className={`notification-bell-btn ${unreadCount > 0 ? 'has-unread' : ''}`}
+        onClick={() => setOpen(!open)}
+        aria-label={`Notifications, ${unreadCount} unread`}
+      >
+        <BellIcon />
+        {unreadCount > 0 && <span className="notification-badge-dot" />}
+      </button>
+
+      {open && (
+        <div className="notification-dropdown">
+          <div className="notification-header">
+            <h3>Notifications</h3>
+            <div className="notification-actions">
+              {unreadCount > 0 && (
+                <button type="button" className="btn-link" onClick={markAllAsRead}>
+                  Mark all as read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button type="button" className="btn-link text-danger" onClick={clearAll}>
+                  Clear all
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="notification-list">
+            {notifications.length === 0 ? (
+              <div className="notification-empty">
+                No new notifications
+              </div>
+            ) : (
+              notifications.map((n) => (
+                <div
+                  key={n.id}
+                  className={`notification-item ${!n.read ? 'unread' : ''}`}
+                  onClick={() => handleNotificationClick(n)}
+                >
+                  <div className="notification-item-icon">
+                    {n.type === 'bug_assigned' ? (
+                      <BugIcon width={14} height={14} className="icon-bug" />
+                    ) : (
+                      <CheckCircleIcon width={14} height={14} className="icon-test-case" />
+                    )}
+                  </div>
+                  <div className="notification-item-content">
+                    <div className="notification-message">{n.message}</div>
+                    <div className="notification-time">
+                      {new Date(n.createdAt).toLocaleDateString()} {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  {!n.read && <div className="unread-bullet" />}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProjectOverview({ projectId }) {
   const { pathname } = useLocation()
   const { projects } = useProjects()
@@ -331,6 +434,7 @@ export function Layout({ children }) {
         </nav>
 
         <div className="topbar-actions">
+          <NotificationCenter />
           <UserPill />
         </div>
       </header>

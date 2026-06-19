@@ -5,9 +5,11 @@ import { deleteBugRemote, saveBugRemote, saveRunDraftRemote, saveTestRunRemote, 
 import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
 import { addActivity } from '../utils/activity'
+import { useNotifications } from './useNotifications'
 
 export function useBugs(projectId) {
   const [bugs, setBugs] = useState(() => getBugs(projectId))
+  const { sendNotification } = useNotifications()
   const remoteReady = useRemoteSync()
 
   const refresh = useCallback(() => setBugs(getBugs(projectId)), [projectId])
@@ -85,8 +87,19 @@ export function useBugs(projectId) {
       })
     }
 
+    if (bug.assignedTo) {
+      sendNotification({
+        recipient: bug.assignedTo,
+        type: 'bug_assigned',
+        entityId: bug.id,
+        entityName: bug.sourceBugId,
+        message: `${creatorName || 'Someone'} assigned Bug ${bug.sourceBugId} to you: ${bug.title}`,
+        projectId,
+      })
+    }
+
     return bug
-  }, [projectId, remoteReady])
+  }, [projectId, remoteReady, sendNotification])
 
   const removeBug = useCallback((id) => {
     const before = getBugs(projectId).find((b) => b.id === id)
@@ -182,7 +195,19 @@ export function useBugs(projectId) {
         })
       })
     }
-  }, [projectId, remoteReady])
+
+    if (isAssigneeChange && bug.assignedTo) {
+      const senderName = getCurrentUser() || 'Someone'
+      sendNotification({
+        recipient: bug.assignedTo,
+        type: 'bug_assigned',
+        entityId: bug.id,
+        entityName: bug.sourceBugId || bug.id.slice(0, 8).toUpperCase(),
+        message: `${senderName} assigned Bug ${bug.sourceBugId || bug.id.slice(0, 8).toUpperCase()} to you: ${bug.title}`,
+        projectId,
+      })
+    }
+  }, [projectId, remoteReady, sendNotification])
 
   return { bugs, addBug, removeBug, updateBug, refresh }
 }

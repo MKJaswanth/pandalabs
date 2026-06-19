@@ -6,9 +6,11 @@ import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
 import { addActivity } from '../utils/activity'
 import { describeTestCaseChanges } from '../utils/history'
+import { useNotifications } from './useNotifications'
 
 export function useTestCases(projectId) {
   const [testCases, setTestCasesState] = useState(() => getTestCases(projectId))
+  const { sendNotification } = useNotifications()
   const remoteReady = useRemoteSync()
 
   const refresh = useCallback(() => setTestCasesState(getTestCases(projectId)), [projectId])
@@ -63,8 +65,19 @@ export function useTestCases(projectId) {
       })
     }
 
+    if (tc.assignee) {
+      sendNotification({
+        recipient: tc.assignee,
+        type: 'test_case_assigned',
+        entityId: tc.id,
+        entityName: tc.sourceTcId || tc.id.slice(0, 8).toUpperCase(),
+        message: `${tc.createdByName || 'Someone'} assigned Test Case ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()} to you: ${tc.title}`,
+        projectId,
+      })
+    }
+
     return tc
-  }, [projectId, remoteReady])
+  }, [projectId, remoteReady, sendNotification])
 
   const removeTestCase = useCallback((id) => {
     const before = getTestCases(projectId).find((t) => t.id === id)
@@ -163,7 +176,19 @@ export function useTestCases(projectId) {
         })
       })
     }
-  }, [projectId, remoteReady])
+
+    const isAssigneeChange = before && before.assignee !== updated.assignee
+    if (isAssigneeChange && updated.assignee) {
+      sendNotification({
+        recipient: updated.assignee,
+        type: 'test_case_assigned',
+        entityId: updated.id,
+        entityName: updated.sourceTcId || updated.id.slice(0, 8).toUpperCase(),
+        message: `${updated.updatedByName || 'Someone'} assigned Test Case ${updated.sourceTcId || updated.id.slice(0, 8).toUpperCase()} to you: ${updated.title}`,
+        projectId,
+      })
+    }
+  }, [projectId, remoteReady, sendNotification])
 
   return { testCases, addTestCase, removeTestCase, removeTestCases, updateTestCase, refresh }
 }

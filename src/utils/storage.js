@@ -361,3 +361,24 @@ export const saveActivity = (activity) => {
     setActivities(list)
   }
 }
+
+// Notifications
+export const notificationsKey = () => `${cachePrefix()}notifications`
+export const getNotificationsRaw = () => {
+  const key = notificationsKey()
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeRecord)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
+export const getNotifications = () => excludeDeleted(getNotificationsRaw())
+export const setNotifications = (notifications) => set(notificationsKey(), notifications.map(sanitizeRecord))
+export const saveNotification = (notification) => {
+  const list = getNotificationsRaw()
+  const idx = list.findIndex((n) => n.id === notification.id)
+  const sanitized = sanitizeRecord(notification)
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
+  set(notificationsKey(), list)
+}
+export const deleteNotification = (id) =>
+  set(notificationsKey(), markDeleted(getNotificationsRaw(), id))

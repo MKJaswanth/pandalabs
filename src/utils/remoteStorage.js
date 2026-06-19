@@ -327,3 +327,21 @@ export function subscribePresence(projectId, onChange) {
     }
   )
 }
+
+const notificationsPath = () => [...workspacePath(), 'notifications']
+
+export const subscribeNotifications = (onChange) => subscribe(notificationsPath(), onChange)
+
+export async function saveNotificationRemote(notification) {
+  return upsert(notificationsPath(), notification)
+}
+
+export async function deleteNotificationRemote(id) {
+  if (!isFirebaseEnabled || !db) return
+  try {
+    const ref = doc(db, ...notificationsPath(), id)
+    await deleteDoc(ref)
+  } catch (err) {
+    console.error('[remoteStorage] Notification deletion failed:', err)
+  }
+}
