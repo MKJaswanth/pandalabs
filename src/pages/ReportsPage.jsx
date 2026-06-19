@@ -19,6 +19,8 @@ const formatRunDate = (dateValue) => {
 const plural = (count, singular, pluralLabel = `${singular}s`) =>
   `${count} ${count === 1 ? singular : pluralLabel}`
 
+const enc = (value) => encodeURIComponent(value)
+
 export function ReportsPage() {
   const { projects } = useProjects()
   const [nowTs] = useState(() => Date.now())
@@ -34,6 +36,17 @@ export function ReportsPage() {
   const executed = totals.total - totals.pending
   const readyCount = rows.filter((r) => r.readiness.label === 'Ready').length
   const staleCount = rows.filter((r) => r.total > 0 && r.noRecentRun).length
+  const firstProjectWith = (predicate) => rows.find(predicate)?.id
+  const firstOpenBugProject = firstProjectWith((r) => r.openBugs > 0)
+  const firstBlockerProject = firstProjectWith((r) => r.blocker > 0)
+  const firstFailedProject = firstProjectWith((r) => r.failed > 0)
+  const firstPendingProject = firstProjectWith((r) => r.pending > 0)
+  const firstStaleProject = firstProjectWith((r) => r.total > 0 && r.noRecentRun)
+
+  const bugSeverityLink = (severity) => {
+    const id = firstProjectWith((r) => (severity === 'Critical' ? r.critical : severity === 'Major' ? r.major : r.minor) > 0)
+    return id ? `/projects/${id}/bugs?severity=${enc(severity)}` : null
+  }
 
   // Build moduleRisk
   const moduleRisk = {}
@@ -57,6 +70,7 @@ export function ReportsPage() {
       if (!moduleRisk[mod]) {
         moduleRisk[mod] = {
           module: mod,
+          projectId: p.id,
           score: 0,
           highestSeverity: 'Minor',
           highestPriority: 'Low',
@@ -69,6 +83,7 @@ export function ReportsPage() {
       }
 
       const modInfo = moduleRisk[mod]
+      if (!modInfo.projectId) modInfo.projectId = p.id
 
       // Evaluate failing cases in this module
       pCases.forEach((t) => {
@@ -173,10 +188,11 @@ export function ReportsPage() {
       label: 'Open defects',
       value: totals.openBugs,
       tone: totals.critical > 0 ? 'failed' : totals.openBugs > 0 ? 'pending' : 'passed',
+      to: firstOpenBugProject ? `/projects/${firstOpenBugProject}/bugs?status=Open` : null,
       severities: [
-        { label: 'Critical', value: totals.critical, tone: 'critical' },
-        { label: 'Major', value: totals.major, tone: 'major' },
-        { label: 'Minor', value: totals.minor, tone: 'minor' },
+        { label: 'Critical', value: totals.critical, tone: 'critical', to: bugSeverityLink('Critical') },
+        { label: 'Major', value: totals.major, tone: 'major', to: bugSeverityLink('Major') },
+        { label: 'Minor', value: totals.minor, tone: 'minor', to: bugSeverityLink('Minor') },
       ],
     },
     {
@@ -198,23 +214,23 @@ export function ReportsPage() {
   // ── What needs attention (max 5) ───────────────────────────────────────
   const attentionItems = []
   if (totals.blocker > 0) {
-    attentionItems.push({ tone: 'failed', text: `${plural(totals.blocker, 'blocker case')} blocking release` })
+    attentionItems.push({ tone: 'failed', text: `${plural(totals.blocker, 'blocker case')} blocking release`, to: firstBlockerProject ? `/projects/${firstBlockerProject}/test-cases?status=Blocker` : null })
   }
   if (totals.critical > 0) {
-    attentionItems.push({ tone: 'failed', text: `${plural(totals.critical, 'critical bug')} open` })
+    attentionItems.push({ tone: 'failed', text: `${plural(totals.critical, 'critical bug')} open`, to: bugSeverityLink('Critical') })
   }
   if (totals.openBugs - totals.critical > 0) {
     const rest = totals.openBugs - totals.critical
-    attentionItems.push({ tone: 'pending', text: `${plural(rest, 'other open bug')} ${rest === 1 ? 'needs' : 'need'} triage` })
+    attentionItems.push({ tone: 'pending', text: `${plural(rest, 'other open bug')} ${rest === 1 ? 'needs' : 'need'} triage`, to: firstOpenBugProject ? `/projects/${firstOpenBugProject}/bugs?status=Open` : null })
   }
   if (totals.failed > 0) {
-    attentionItems.push({ tone: 'pending', text: `${plural(totals.failed, 'failing case')} ${totals.failed === 1 ? 'needs' : 'need'} attention` })
+    attentionItems.push({ tone: 'pending', text: `${plural(totals.failed, 'failing case')} ${totals.failed === 1 ? 'needs' : 'need'} attention`, to: firstFailedProject ? `/projects/${firstFailedProject}/test-cases?status=Fail` : null })
   }
   if (staleCount > 0 && attentionItems.length < 5) {
-    attentionItems.push({ tone: 'neutral', text: `${plural(staleCount, 'project')} ${staleCount === 1 ? 'has' : 'have'} no run in ${STALE_DAYS}+ days` })
+    attentionItems.push({ tone: 'neutral', text: `${plural(staleCount, 'project')} ${staleCount === 1 ? 'has' : 'have'} no run in ${STALE_DAYS}+ days`, to: firstStaleProject ? `/projects/${firstStaleProject}/test-runs` : null })
   }
   if (totals.pending > 0 && attentionItems.length < 5) {
-    attentionItems.push({ tone: 'neutral', text: `${plural(totals.pending, 'case')} still pending execution` })
+    attentionItems.push({ tone: 'neutral', text: `${plural(totals.pending, 'case')} still pending execution`, to: firstPendingProject ? `/projects/${firstPendingProject}/test-cases?status=${enc('Not Executed')}` : null })
   }
   if (attentionItems.length === 0 && totals.total > 0) {
     attentionItems.push({ tone: 'passed', text: 'No blockers, no failing cases, no open bugs' })
@@ -259,7 +275,14 @@ export function ReportsPage() {
       <PageHeader
         title="Release readiness"
         description="See what can ship, what is blocked, and the next QA action."
-        action={<span className="rr-asof">As of {new Date(nowTs).toLocaleDateString()}</span>}
+        action={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span className="rr-asof">As of {new Date(nowTs).toLocaleDateString()}</span>
+            <button className="secondary-button no-print" type="button" onClick={() => window.print()}>
+              Export PDF
+            </button>
+          </div>
+        }
       />
 
       {/* ── 1. Readiness summary ──────────────────────────────────────── */}
@@ -277,14 +300,14 @@ export function ReportsPage() {
             <span className="rr-stat-val">{executed}<span className="rr-stat-dim">/{totals.total}</span></span>
             <span className="rr-stat-label">Executed</span>
           </div>
-          <div className="rr-stat">
+          <Link to={firstOpenBugProject ? `/projects/${firstOpenBugProject}/bugs?status=Open` : '/projects'} className="rr-stat rr-stat-link">
             <span className="rr-stat-val">{totals.openBugs}</span>
             <span className="rr-stat-label">Open bugs</span>
-          </div>
-          <div className="rr-stat">
+          </Link>
+          <Link to={firstBlockerProject ? `/projects/${firstBlockerProject}/test-cases?status=Blocker` : '/projects'} className="rr-stat rr-stat-link">
             <span className="rr-stat-val">{totals.blocker}</span>
             <span className="rr-stat-label">Blockers</span>
-          </div>
+          </Link>
         </div>
         {totals.total > 0 && (
           <div className="rr-banner-bar">
@@ -304,23 +327,31 @@ export function ReportsPage() {
 
       {/* ── 2. Quality signals ────────────────────────────────────────── */}
       <section className="rr-signals" aria-label="Quality signals">
-        {signals.map((sig) => (
-          <article key={sig.key} className="rr-signal-card">
+        {signals.map((sig) => {
+          const SignalTag = sig.to && !sig.severities ? Link : 'article'
+          return (
+          <SignalTag key={sig.key} className="rr-signal-card rr-clickable-card" {...(sig.to ? { to: sig.to } : {})}>
             <span className="rr-signal-label">{sig.label}</span>
             <span className={`rr-signal-value status-text--${sig.tone}`}>{sig.value}</span>
             {sig.severities ? (
               <div className="rr-sev-row">
                 {sig.severities.map((sv) => (
+                  sv.to ? (
+                    <Link key={sv.label} to={sv.to} className={`rr-sev rr-sev--${sv.tone}`} title={`${sv.label}: ${sv.value}`}>
+                      {sv.value} {sv.label}
+                    </Link>
+                  ) : (
                   <span key={sv.label} className={`rr-sev rr-sev--${sv.tone}`} title={`${sv.label}: ${sv.value}`}>
                     {sv.value} {sv.label}
                   </span>
+                  )
                 ))}
               </div>
             ) : (
               <span className="rr-signal-sub">{sig.sub}</span>
             )}
-          </article>
-        ))}
+          </SignalTag>
+        )})}
       </section>
 
       {/* ── 3. What needs attention ────────────────────────────────────── */}
@@ -328,12 +359,14 @@ export function ReportsPage() {
         <section className="rr-section">
           <h2 className="rr-section-title">What needs attention</h2>
           <div className="rr-attention-list">
-            {attentionItems.map((item, i) => (
-              <div key={i} className={`rr-attention-item rr-attention-item--${item.tone}`}>
+            {attentionItems.map((item, i) => {
+              const AttentionTag = item.to ? Link : 'div'
+              return (
+              <AttentionTag key={i} className={`rr-attention-item rr-attention-item--${item.tone} rr-clickable-row`} {...(item.to ? { to: item.to } : {})}>
                 <span className={`rr-attention-dot rr-attention-dot--${item.tone}`} />
                 <span className="rr-attention-text">{item.text}</span>
-              </div>
-            ))}
+              </AttentionTag>
+            )})}
           </div>
         </section>
       )}
@@ -347,7 +380,14 @@ export function ReportsPage() {
           </div>
           <div className="rr-risk-list">
             {riskAreas.map((m) => (
-              <div key={m.module} className="rr-risk-row">
+              <Link
+                key={m.module}
+                to={m.criticalBugs + m.majorBugs + m.minorBugs > 0
+                  ? `/projects/${m.projectId}/bugs?module=${enc(m.module)}`
+                  : `/projects/${m.projectId}/test-cases?module=${enc(m.module)}`
+                }
+                className="rr-risk-row rr-clickable-row"
+              >
                 <span className="rr-risk-name">{m.module}</span>
                 <div className="rr-risk-bar" aria-hidden="true">
                   <span
@@ -356,7 +396,7 @@ export function ReportsPage() {
                   />
                 </div>
                 <span className="rr-risk-count">{m.details}</span>
-              </div>
+              </Link>
             ))}
           </div>
         </section>
@@ -404,9 +444,9 @@ export function ReportsPage() {
               </div>
 
               <div className="rr-issue-stack">
-                <span className={r.failed > 0 ? 'metric-failed' : ''}><strong>{r.failed}</strong> Failed</span>
-                <span className={r.blocker > 0 ? 'metric-failed' : ''}><strong>{r.blocker}</strong> Blockers</span>
-                <span className={r.openBugs > 0 ? 'metric-failed' : ''}><strong>{r.openBugs}</strong> Open Bugs</span>
+                <Link to={`/projects/${r.id}/test-cases?status=Fail`} className={r.failed > 0 ? 'metric-failed' : ''}><strong>{r.failed}</strong> Failed</Link>
+                <Link to={`/projects/${r.id}/test-cases?status=Blocker`} className={r.blocker > 0 ? 'metric-failed' : ''}><strong>{r.blocker}</strong> Blockers</Link>
+                <Link to={`/projects/${r.id}/bugs?status=Open`} className={r.openBugs > 0 ? 'metric-failed' : ''}><strong>{r.openBugs}</strong> Open Bugs</Link>
               </div>
 
               <div className="rr-run-cell">

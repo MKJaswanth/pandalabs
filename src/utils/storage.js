@@ -361,3 +361,59 @@ export const saveActivity = (activity) => {
     setActivities(list)
   }
 }
+
+// Notifications
+export const notificationsKey = () => `${cachePrefix()}notifications`
+export const getNotificationsRaw = () => {
+  const key = notificationsKey()
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeRecord)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
+export const getNotifications = () => excludeDeleted(getNotificationsRaw())
+export const setNotifications = (notifications) => set(notificationsKey(), notifications.map(sanitizeRecord))
+export const saveNotification = (notification) => {
+  const list = getNotificationsRaw()
+  const idx = list.findIndex((n) => n.id === notification.id)
+  const sanitized = sanitizeRecord(notification)
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
+  set(notificationsKey(), list)
+}
+export const deleteNotification = (id) =>
+  set(notificationsKey(), markDeleted(getNotificationsRaw(), id))
+
+// Shared Steps
+export const sharedStepsKey = (projectId) => `${cachePrefix()}sharedsteps_${projectId}`
+export const getSharedStepsRaw = (projectId) => {
+  const key = sharedStepsKey(projectId)
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeRecord)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
+export const getSharedSteps = (projectId) => excludeDeleted(getSharedStepsRaw(projectId))
+export const setSharedSteps = (projectId, sharedSteps) => set(sharedStepsKey(projectId), sharedSteps.map(sanitizeRecord))
+export const saveSharedStep = (projectId, group) => {
+  const list = getSharedStepsRaw(projectId)
+  const idx = list.findIndex((g) => g.id === group.id)
+  const sanitized = sanitizeRecord(group)
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
+  set(sharedStepsKey(projectId), list)
+}
+export const deleteSharedStep = (projectId, id) =>
+  set(sharedStepsKey(projectId), markDeleted(getSharedStepsRaw(projectId), id))
+
+// Requirements (link test cases → requirements for coverage)
+export const requirementsKey = (projectId) => `${cachePrefix()}requirements_${projectId}`
+export const getRequirementsRaw = (projectId) => get(requirementsKey(projectId)) ?? []
+export const getRequirements = (projectId) => excludeDeleted(getRequirementsRaw(projectId))
+export const setRequirements = (projectId, requirements) => set(requirementsKey(projectId), requirements)
+export const saveRequirement = (projectId, requirement) => {
+  const list = getRequirementsRaw(projectId)
+  const idx = list.findIndex((r) => r.id === requirement.id)
+  idx >= 0 ? (list[idx] = requirement) : list.push(requirement)
+  set(requirementsKey(projectId), list)
+}
+export const deleteRequirement = (projectId, id) =>
+  set(requirementsKey(projectId), markDeleted(getRequirementsRaw(projectId), id))

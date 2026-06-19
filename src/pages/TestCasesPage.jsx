@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { UploadIcon, DownloadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
+import { UploadIcon, DownloadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon, ArrowRightIcon } from '../components/Icons'
 import { useSortable } from '../hooks/useSortable'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { BulkUploadModal } from '../components/BulkUploadModal'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
@@ -12,6 +12,8 @@ import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
 import { useProjects } from '../hooks/useProjects'
 import { useUser } from '../context/UserContext'
+import { useSharedSteps } from '../hooks/useSharedSteps'
+import { useUserRole } from '../hooks/useUserRole'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
 import { exportTestCases } from '../utils/export'
@@ -38,10 +40,12 @@ const blankForm = () => ({
 
 export function TestCasesPage() {
   const { projectId } = useParams()
+  const [searchParams] = useSearchParams()
   const { testCases, addTestCase, updateTestCase, removeTestCase, removeTestCases } = useTestCases(projectId)
   const { members } = useTeamMembers()
   const { projects } = useProjects()
   const { user } = useUser()
+  const { isLead } = useUserRole()
   const projectName = projects.find((p) => p.id === projectId)?.name ?? projectId
   const confirm = useConfirm()
   const toast = useToast()
@@ -50,15 +54,80 @@ export function TestCasesPage() {
   const [showBulk, setShowBulk] = useState(false)
   const [editTc, setEditTc] = useState(null)   // tc being edited
   const [form, setForm] = useState(blankForm)
-  const [search, setSearch] = useState('')
-  const [fPriority, setFPriority] = useState('')
-  const [fStatus, setFStatus] = useState('')
-  const [fModule, setFModule] = useState('')
-  const [fAssignee, setFAssignee] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+  const [fPriority, setFPriority] = useState(() => searchParams.get('priority') || '')
+  const [fStatus, setFStatus] = useState(() => searchParams.get('status') || '')
+  const [fModule, setFModule] = useState(() => searchParams.get('module') || '')
+  const [fAssignee, setFAssignee] = useState(() => searchParams.get('assignee') || '')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkStatus, setBulkStatus] = useState('Pass')
+
+  const [activeTab, setActiveTab] = useState('cases') // 'cases' | 'shared-steps'
+  const { sharedSteps, addSharedStep, updateSharedStep, removeSharedStep } = useSharedSteps(projectId)
+  const [showSharedModal, setShowSharedModal] = useState(false)
+  const [editSharedGroup, setEditSharedGroup] = useState(null)
+  const [sharedForm, setSharedForm] = useState({ name: '', description: '', steps: [''] })
+  const [sharedSearch, setSharedSearch] = useState('')
+
+  const handleSaveSharedGroup = async (e) => {
+    e.preventDefault()
+    if (!sharedForm.name.trim()) return
+    const filteredSteps = sharedForm.steps.filter(Boolean)
+    if (editSharedGroup) {
+      await updateSharedStep({
+        ...editSharedGroup,
+        name: sharedForm.name,
+        description: sharedForm.description,
+        steps: filteredSteps,
+        updatedAt: new Date().toISOString(),
+      })
+      toast.success('Shared step group updated')
+    } else {
+      await addSharedStep(sharedForm.name, sharedForm.description, filteredSteps)
+      toast.success('Shared step group created')
+    }
+    setShowSharedModal(false)
+    setEditSharedGroup(null)
+    setSharedForm({ name: '', description: '', steps: [''] })
+  }
+
+  const openAddShared = () => {
+    setEditSharedGroup(null)
+    setSharedForm({ name: '', description: '', steps: [''] })
+    setShowSharedModal(true)
+  }
+
+  const openEditShared = (group) => {
+    setEditSharedGroup(group)
+    setSharedForm({
+      name: group.name,
+      description: group.description || '',
+      steps: group.steps?.length ? [...group.steps] : [''],
+    })
+    setShowSharedModal(true)
+  }
+
+  const handleDeleteShared = async (group) => {
+    const isLinked = testCases.some((tc) =>
+      tc.steps?.some((step) => step === `shared_step_group:${group.id}`)
+    )
+    const msg = isLinked
+      ? `This shared step group is currently referenced by some test cases. Deleting it will show warning logs in those cases. Are you sure you want to delete "${group.name}"?`
+      : `Are you sure you want to delete shared steps "${group.name}"?`
+    
+    const ok = await confirm({
+      title: 'Delete shared steps?',
+      message: msg,
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (ok) {
+      await removeSharedStep(group.id)
+      toast.success('Shared step group deleted')
+    }
+  }
   // Add a computed _tcId field so useSortable can sort by TC ID as a plain string
   const sortableTestCases = useMemo(
     () => testCases.map((tc) => ({
@@ -205,132 +274,259 @@ export function TestCasesPage() {
         title="Test cases"
         description="Filter, review, and prepare cases for the next test run."
         action={
-          <div className="page-actions-row">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => exportTestCases(visible, projectName)}
-              disabled={visible.length === 0}
-            >
-              <DownloadIcon width={14} height={14} /> Export
-            </button>
-            <button className="secondary-button" type="button" onClick={() => setShowBulk(true)}>
-              <UploadIcon width={14} height={14} /> Bulk upload
-            </button>
-            <button className="primary-button" type="button" onClick={() => setShowAdd(true)}>
-              + Add case
-            </button>
-          </div>
+          activeTab === 'cases' ? (
+            <div className="page-actions-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => exportTestCases(visible, projectName)}
+                disabled={visible.length === 0}
+              >
+                <DownloadIcon width={14} height={14} /> Export
+              </button>
+              {isLead && (
+                <>
+                  <button className="secondary-button" type="button" onClick={() => setShowBulk(true)}>
+                    <UploadIcon width={14} height={14} /> Bulk upload
+                  </button>
+                  <button className="primary-button" type="button" onClick={() => setShowAdd(true)}>
+                    + Add case
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            isLead && (
+              <div className="page-actions-row">
+                <button className="primary-button" type="button" onClick={openAddShared}>
+                  + Add shared steps
+                </button>
+              </div>
+            )
+          )
         }
       />
 
-      <section className="panel">
-        <div className="toolbar">
-          <input
-            type="search"
-            placeholder="Search test cases…"
-            aria-label="Search"
-            value={search}
-            onChange={updateListControl(setSearch)}
-          />
-          <select aria-label="Module filter" value={fModule} onChange={updateListControl(setFModule)} className={fModule ? 'filter-active' : ''}>
-            <option value="">Module</option>
-            {modules.map((m) => <option key={m}>{m}</option>)}
-          </select>
-          <select aria-label="Priority filter" value={fPriority} onChange={updateListControl(setFPriority)} className={fPriority ? 'filter-active' : ''}>
-            <option value="">Priority</option>
-            {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-          </select>
-          <select aria-label="Status filter" value={fStatus} onChange={updateListControl(setFStatus)} className={fStatus ? 'filter-active' : ''}>
-            <option value="">Status</option>
-            {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
-          </select>
-          <select aria-label="Assignee filter" value={fAssignee} onChange={updateListControl(setFAssignee)} className={fAssignee ? 'filter-active' : ''}>
-            <option value="">Assignee</option>
-            {assignees.map((a) => <option key={a}>{a}</option>)}
-          </select>
-          <div className="toolbar-info">
+      <div className="tab-navigation" style={{ marginBottom: 16 }}>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === 'cases' ? 'tab-btn--active' : ''}`}
+          onClick={() => setActiveTab('cases')}
+        >
+          All Test Cases ({testCases.length})
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === 'shared-steps' ? 'tab-btn--active' : ''}`}
+          onClick={() => setActiveTab('shared-steps')}
+        >
+          Shared Steps Library ({sharedSteps.length})
+        </button>
+      </div>
+
+      {activeTab === 'cases' ? (
+        <section className="panel">
+          <div className="toolbar">
+            <input
+              type="search"
+              placeholder="Search test cases…"
+              aria-label="Search"
+              value={search}
+              onChange={updateListControl(setSearch)}
+            />
+            <select aria-label="Module filter" value={fModule} onChange={updateListControl(setFModule)} className={fModule ? 'filter-active' : ''}>
+              <option value="">Module</option>
+              {modules.map((m) => <option key={m}>{m}</option>)}
+            </select>
+            <select aria-label="Priority filter" value={fPriority} onChange={updateListControl(setFPriority)} className={fPriority ? 'filter-active' : ''}>
+              <option value="">Priority</option>
+              {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+            </select>
+            <select aria-label="Status filter" value={fStatus} onChange={updateListControl(setFStatus)} className={fStatus ? 'filter-active' : ''}>
+              <option value="">Status</option>
+              {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+            {assignees.length > 0 && (
+              <select aria-label="Assignee filter" value={fAssignee} onChange={updateListControl(setFAssignee)} className={fAssignee ? 'filter-active' : ''}>
+                <option value="">Assignee</option>
+                {assignees.map((a) => <option key={a}>{a}</option>)}
+              </select>
+            )}
             {activeFilterCount > 0 && (
-              <button className="filter-clear-btn" type="button" onClick={clearFilters}>
-                Clear ({activeFilterCount})
+              <button className="link-btn clear-filters-btn" type="button" onClick={clearFilters}>
+                Clear filters ({activeFilterCount})
               </button>
             )}
-            <span>{visible.length} of {sortedCases.length}</span>
           </div>
-        </div>
 
-        {visible.length === 0 ? (
-          <div className="empty-table-row">No test cases found.</div>
-        ) : (
-          <>
-          <div className="bulk-action-bar">
-            <span>{selectedIds.length} selected</span>
-            <select aria-label="Bulk status" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}>
-              {TEST_STATUSES.filter((status) => status !== 'Not Executed').map((status) => (
-                <option key={status}>{status}</option>
-              ))}
-            </select>
-            <button className="secondary-button" type="button" disabled={selectedIds.length === 0} onClick={applyBulkStatus}>
-              Mark selected
-            </button>
-            <button className="danger-button" type="button" disabled={selectedIds.length === 0} onClick={handleBulkDelete}>
-              Delete selected
-            </button>
-          </div>
-          <div className="table-wrap">
-            <table className="tc-table">
-              <colgroup>
-                <col className="tc-col-check" />
-                <col className="tc-col-id" />
-                <col className="tc-col-title" />
-                <col className="tc-col-module" />
-                <col className="tc-col-priority" />
-                <col className="tc-col-status" />
-                <col className="tc-col-assignee" />
-                <col className="tc-col-actions" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      className="row-checkbox"
-                      type="checkbox"
-                      aria-label="Select visible rows"
-                      checked={pagedCases.length > 0 && pagedCases.every((tc) => selectedIds.includes(tc.id))}
-                      onChange={toggleVisiblePage}
-                    />
-                  </th>
-                  <SortTh col="_tcId" label="TC ID" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
-                  <SortTh col="title"    label="Title"    active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
-                  <SortTh col="module"   label="Module"   active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
-                  <SortTh col="priority" label="Priority" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
-                  <SortTh col="status"   label="Status"   active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
-                  <SortTh col="assignee" label="Assignee" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedCases.map((tc) => (
-                  <tr key={tc.id}>
-                    <td>
+          {selectedIds.length > 0 && (
+            <div className="bulk-bar" aria-label="Bulk actions">
+              <span>{selectedIds.length} case(s) selected</span>
+              {isLead ? (
+                <div className="bulk-actions">
+                  <select
+                    aria-label="Bulk status select"
+                    value={bulkStatus}
+                    onChange={(e) => setBulkStatus(e.target.value)}
+                  >
+                    {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={applyBulkStatus}
+                  >
+                    Apply status
+                  </button>
+                  <button
+                    className="danger-button"
+                    type="button"
+                    onClick={handleBulkDelete}
+                  >
+                    Delete selected
+                  </button>
+                </div>
+              ) : (
+                <span className="text-muted" style={{ fontSize: 11, fontStyle: 'italic' }}>Actions restricted (read-only)</span>
+              )}
+            </div>
+          )}
+
+          {visible.length === 0 ? (
+            <div className="empty-table-row">No test cases found.</div>
+          ) : (
+            <>
+            <div className="table-wrap">
+              <table className="tc-table">
+                <colgroup>
+                  <col className="tc-col-check" />
+                  <col className="tc-col-id" />
+                  <col className="tc-col-title" />
+                  <col className="tc-col-module" />
+                  <col className="tc-col-priority" />
+                  <col className="tc-col-assignee" />
+                  <col className="tc-col-status" />
+                  <col className="tc-col-actions" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className="checkbox-th">
                       <input
-                        className="row-checkbox"
                         type="checkbox"
-                        aria-label={`Select ${tc.title}`}
-                        checked={selectedIds.includes(tc.id)}
-                        onChange={() => toggleSelected(tc.id)}
+                        aria-label="Select all cases"
+                        checked={pagedCases.length > 0 && pagedCases.every((tc) => selectedIds.includes(tc.id))}
+                        onChange={toggleVisiblePage}
                       />
-                    </td>
-                    <td className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</td>
-                    <td className="title-cell">
-                      <Link to={`/projects/${projectId}/test-cases/${tc.id}`}>{tc.title}</Link>
-                    </td>
-                    <td>{tc.module || '—'}</td>
-                    <td>
+                    </th>
+                    <th>
+                      <SortTh col="_tcId" label="ID" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                    </th>
+                    <th>
+                      <SortTh col="title" label="Title" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                    </th>
+                    <th>
+                      <SortTh col="module" label="Module" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                    </th>
+                    <th>
+                      <SortTh col="priority" label="Priority" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                    </th>
+                    <th>
+                      <SortTh col="assignee" label="Assignee" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                    </th>
+                    <th>
+                      <SortTh col="status" label="Status" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
+                    </th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedCases.map((tc) => (
+                    <tr key={tc.id} className={selectedIds.includes(tc.id) ? 'row-selected' : ''}>
+                      <td className="checkbox-td">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${tc.title}`}
+                          checked={selectedIds.includes(tc.id)}
+                          onChange={() => toggleSelected(tc.id)}
+                        />
+                      </td>
+                      <td className="mono">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</td>
+                      <td>
+                        <Link className="tc-title-link" to={`/projects/${projectId}/test-cases/${tc.id}`}>
+                          {tc.title}
+                        </Link>
+                      </td>
+                      <td>{tc.module || '—'}</td>
+                      <td>
+                        <select
+                          className={`inline-select priority-${(tc.priority || 'Med').toLowerCase()}`}
+                          value={tc.priority || 'Med'}
+                          aria-label="Priority"
+                          disabled={!isLead}
+                          onChange={(e) => updateTestCase(withHistory(
+                            { ...tc, priority: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                            historyEntry('priority_change', user, `Priority changed from ${tc.priority} to ${e.target.value}`, tc.priority, e.target.value),
+                          ))}
+                        >
+                          {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                        </select>
+                      </td>
+                      <td>{tc.assignee || '—'}</td>
+                      <td>
+                        <select
+                          className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
+                          value={tc.status}
+                          aria-label="Status"
+                          disabled={!isLead}
+                          onChange={(e) => updateTestCase(withHistory(
+                            { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                            historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
+                          ))}
+                        >
+                          {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div className="table-row-actions">
+                          <Link className="icon-btn-action" to={`/projects/${projectId}/test-cases/${tc.id}`} title="View detail" aria-label="View detail">
+                            <ArrowRightIcon width={14} height={14} />
+                          </Link>
+                          {isLead && (
+                            <>
+                              <button type="button" className="icon-btn-action" onClick={() => openEdit(tc)} title="Edit" aria-label="Edit">
+                                <PencilIcon width={14} height={14} />
+                              </button>
+                              <button className="icon-btn-action" type="button" onClick={() => cloneCase(tc)} title="Clone" aria-label="Clone">
+                                <CopyIcon width={14} height={14} />
+                              </button>
+                              <button className="icon-btn-action text-danger" type="button" title="Delete" aria-label="Delete"
+                                onClick={async () => {
+                                  const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
+                                  if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
+                                }}>
+                                <XIcon width={14} height={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mobile-card-list">
+              {pagedCases.map((tc) => (
+                <div className="mobile-card" key={tc.id}>
+                  <div className="mobile-card-header">
+                    <span className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
+                    <div className="mobile-card-header-badges">
                       <select
                         className={`inline-select status-select priority-${(tc.priority || 'Med').toLowerCase()}`}
                         value={tc.priority || 'Med'}
                         aria-label="Priority"
+                        disabled={!isLead}
                         onChange={(e) => updateTestCase(withHistory(
                           { ...tc, priority: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
                           historyEntry('priority_change', user, `Priority changed from ${tc.priority} to ${e.target.value}`, tc.priority, e.target.value),
@@ -338,12 +534,11 @@ export function TestCasesPage() {
                       >
                         {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
                       </select>
-                    </td>
-                    <td>
                       <select
                         className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
                         value={tc.status}
                         aria-label="Status"
+                        disabled={!isLead}
                         onChange={(e) => updateTestCase(withHistory(
                           { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
                           historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
@@ -351,136 +546,223 @@ export function TestCasesPage() {
                       >
                         {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
                       </select>
-                    </td>
-                    <td>{tc.assignee || '—'}</td>
-                    <td className="row-actions">
-                      <div className="row-actions-inner">
-                        <button className="row-action-btn" type="button" aria-label="Edit"
-                          onClick={() => openEdit(tc)}><PencilIcon width={13} height={13} /></button>
-                        <button className="row-action-btn" type="button" aria-label="Clone"
-                          onClick={() => cloneCase(tc)}><CopyIcon width={13} height={13} /></button>
-                        <button className="row-delete" type="button" aria-label="Delete"
+                    </div>
+                  </div>
+                  <h3 className="mobile-card-title">
+                    <Link to={`/projects/${projectId}/test-cases/${tc.id}`}>{tc.title}</Link>
+                  </h3>
+                  <div className="mobile-card-details">
+                    <div>
+                      <span>Module:</span>
+                      <strong>{tc.module || '—'}</strong>
+                    </div>
+                    <div>
+                      <span>Assignee:</span>
+                      <strong>{tc.assignee || '—'}</strong>
+                    </div>
+                  </div>
+                  <div className="mobile-card-actions">
+                    <Link className="secondary-button mobile-card-action-btn" to={`/projects/${projectId}/test-cases/${tc.id}`}>
+                      Open
+                    </Link>
+                    {isLead && (
+                      <>
+                        <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEdit(tc)}>
+                          Edit
+                        </button>
+                        <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => cloneCase(tc)}>
+                          Clone
+                        </button>
+                        <button className="danger-button mobile-card-action-btn" type="button"
                           onClick={async () => {
                             const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
                             if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
-                          }}><XIcon width={12} height={12} /></button>
-                      </div>
+                          }}>
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            </>
+          )}
+
+          {visible.length > 0 && (
+            <div className="table-pagination" aria-label="Table pagination">
+              <div className="rows-per-page">
+                <span>Rows</span>
+                <select
+                  aria-label="Rows per page"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setPage(1)
+                  }}
+                >
+                  {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+              </div>
+              <span className="pagination-summary">
+                {rangeStart}-{rangeEnd} of {visible.length}
+              </span>
+              <div className="pagination-actions">
+                <button
+                  className="secondary-button icon-button"
+                  type="button"
+                  aria-label="Previous page"
+                  disabled={currentPage === 1}
+                  onClick={() => setPage(Math.max(1, currentPage - 1))}
+                >
+                  <ChevronLeftIcon width={14} height={14} />
+                </button>
+                <span className="page-indicator">{currentPage} / {totalPages}</span>
+                <button
+                  className="secondary-button icon-button"
+                  type="button"
+                  aria-label="Next page"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                >
+                  <ChevronRightIcon width={14} height={14} />
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="panel">
+          <div className="toolbar">
+            <input
+              type="search"
+              placeholder="Search shared steps…"
+              aria-label="Search shared steps"
+              value={sharedSearch}
+              onChange={(e) => setSharedSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="table-wrap">
+            <table className="tc-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Description</th>
+                  <th>Steps count</th>
+                  <th style={{ width: 100, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).length === 0 ? (
+                  <tr>
+                    <td colSpan="4">
+                      <div className="empty-table-row">No shared steps found.</div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).map(g => (
+                    <tr key={g.id}>
+                      <td><strong>{g.name}</strong></td>
+                      <td className="text-muted">{g.description || '—'}</td>
+                      <td>{g.steps?.length || 0} steps</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div className="table-row-actions" style={{ justifyContent: 'flex-end' }}>
+                          {isLead ? (
+                            <>
+                              <button type="button" className="icon-btn-action" onClick={() => openEditShared(g)} title="Edit" aria-label="Edit">
+                                <PencilIcon width={14} height={14} />
+                              </button>
+                              <button type="button" className="icon-btn-action text-danger" onClick={() => handleDeleteShared(g)} title="Delete" aria-label="Delete">
+                                <XIcon width={14} height={14} />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-muted" style={{ fontSize: 11 }}>Read-only</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
 
           <div className="mobile-card-list">
-            {pagedCases.map((tc) => (
-              <div className="mobile-card" key={tc.id}>
-                <div className="mobile-card-header">
-                  <span className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
-                  <div className="mobile-card-header-badges">
-                    <select
-                      className={`inline-select status-select priority-${(tc.priority || 'Med').toLowerCase()}`}
-                      value={tc.priority || 'Med'}
-                      aria-label="Priority"
-                      onChange={(e) => updateTestCase(withHistory(
-                        { ...tc, priority: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
-                        historyEntry('priority_change', user, `Priority changed from ${tc.priority} to ${e.target.value}`, tc.priority, e.target.value),
-                      ))}
-                    >
-                      {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-                    </select>
-                    <select
-                      className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
-                      value={tc.status}
-                      aria-label="Status"
-                      onChange={(e) => updateTestCase(withHistory(
-                        { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
-                        historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
-                      ))}
-                    >
-                      {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
-                    </select>
+            {sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).length === 0 ? (
+              <div className="empty-table-row">No shared steps found.</div>
+            ) : (
+              sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).map(g => (
+                <div className="mobile-card" key={g.id}>
+                  <div className="mobile-card-header">
+                    <strong style={{ fontSize: 14 }}>{g.name}</strong>
+                    <span className="shared-badge">Shared block</span>
+                  </div>
+                  <div className="mobile-card-details">
+                    <div>
+                      <span>Description</span>
+                      <strong>{g.description || '—'}</strong>
+                    </div>
+                    <div>
+                      <span>Steps Count</span>
+                      <strong>{g.steps?.length || 0} steps</strong>
+                    </div>
+                  </div>
+                  <div className="mobile-card-actions">
+                    {isLead ? (
+                      <>
+                        <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEditShared(g)}>
+                          Edit
+                        </button>
+                        <button className="danger-button mobile-card-action-btn" type="button" onClick={() => handleDeleteShared(g)}>
+                          Delete
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 11, padding: '8px 0' }}>Read-only</span>
+                    )}
                   </div>
                 </div>
-                <h3 className="mobile-card-title">
-                  <Link to={`/projects/${projectId}/test-cases/${tc.id}`}>{tc.title}</Link>
-                </h3>
-                <div className="mobile-card-details">
-                  <div>
-                    <span>Module:</span>
-                    <strong>{tc.module || '—'}</strong>
-                  </div>
-                  <div>
-                    <span>Assignee:</span>
-                    <strong>{tc.assignee || '—'}</strong>
-                  </div>
-                </div>
-                <div className="mobile-card-actions">
-                  <Link className="secondary-button mobile-card-action-btn" to={`/projects/${projectId}/test-cases/${tc.id}`}>
-                    Open
-                  </Link>
-                  <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEdit(tc)}>
-                    Edit
-                  </button>
-                  <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => cloneCase(tc)}>
-                    Clone
-                  </button>
-                  <button className="danger-button mobile-card-action-btn" type="button"
-                    onClick={async () => {
-                      const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
-                      if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
-                    }}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
-          </>
-        )}
+        </section>
+      )}
 
-        {visible.length > 0 && (
-          <div className="table-pagination" aria-label="Table pagination">
-            <div className="rows-per-page">
-              <span>Rows</span>
-              <select
-                aria-label="Rows per page"
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value))
-                  setPage(1)
-                }}
-              >
-                {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
-              </select>
+      {showSharedModal && (
+        <Modal title={editSharedGroup ? 'Edit Shared Steps' : 'New Shared Steps'} onClose={() => setShowSharedModal(false)}>
+          <form onSubmit={handleSaveSharedGroup} className="modal-form">
+            <label>
+              Group Name <span className="required">*</span>
+              <input
+                autoFocus
+                required
+                value={sharedForm.name}
+                onChange={(e) => setSharedForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Standard User Login"
+              />
+            </label>
+            <label>
+              Description
+              <input
+                value={sharedForm.description}
+                onChange={(e) => setSharedForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Brief summary of when to use this block"
+              />
+            </label>
+            <label>Steps</label>
+            <StepBuilder
+              steps={sharedForm.steps}
+              onChange={(steps) => setSharedForm((f) => ({ ...f, steps }))}
+            />
+            <div className="modal-footer" style={{ marginTop: 24 }}>
+              <button type="button" className="secondary-button" onClick={() => setShowSharedModal(false)}>Cancel</button>
+              <button type="submit" className="primary-button">{editSharedGroup ? 'Save changes' : 'Create shared steps'}</button>
             </div>
-            <span className="pagination-summary">
-              {rangeStart}-{rangeEnd} of {visible.length}
-            </span>
-            <div className="pagination-actions">
-              <button
-                className="secondary-button icon-button"
-                type="button"
-                aria-label="Previous page"
-                disabled={currentPage === 1}
-                onClick={() => setPage(Math.max(1, currentPage - 1))}
-              >
-                <ChevronLeftIcon width={14} height={14} />
-              </button>
-              <span className="page-indicator">{currentPage} / {totalPages}</span>
-              <button
-                className="secondary-button icon-button"
-                type="button"
-                aria-label="Next page"
-                disabled={currentPage === totalPages}
-                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
-              >
-                <ChevronRightIcon width={14} height={14} />
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
+          </form>
+        </Modal>
+      )}
 
       {showBulk && (
         <BulkUploadModal
@@ -523,7 +805,7 @@ export function TestCasesPage() {
               <textarea rows={2} value={form.preconditions} onChange={set('preconditions')} placeholder="What must be true before this test runs?" />
             </label>
             <label>Steps</label>
-            <StepBuilder steps={form.steps} onChange={(steps) => setForm((f) => ({ ...f, steps }))} />
+            <StepBuilder steps={form.steps} onChange={(steps) => setForm((f) => ({ ...f, steps }))} sharedSteps={sharedSteps} />
             <label>
               Test Data
               <input value={form.testData} onChange={set('testData')} placeholder="Input values, credentials, sample data…" />
