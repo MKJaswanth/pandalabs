@@ -147,7 +147,14 @@ export function TestRunDetailPage() {
           <div className="empty-table-row">No case snapshots recorded for this run.</div>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table className="run-results-table">
+              <colgroup>
+                <col className="rr-col-title" />
+                <col className="rr-col-module" />
+                <col className="rr-col-priority" />
+                <col className="rr-col-status" />
+                <col className="rr-col-actual" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Title</th>
@@ -168,7 +175,7 @@ export function TestRunDetailPage() {
                         {tc.status}
                       </StatusPill>
                     </td>
-                    <td style={{ whiteSpace: 'normal', maxWidth: 300 }}>
+                    <td style={{ whiteSpace: 'normal' }}>
                       {tc.actual || <span className="text-muted">Not recorded</span>}
                       {tc.bugId && activeBugIds.has(tc.bugId) && (
                         <div className="mt-xs">

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { UploadIcon, DownloadIcon, PencilIcon, CopyIcon, XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon, ArrowRightIcon } from '../components/Icons'
 import { useSortable } from '../hooks/useSortable'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { BulkUploadModal } from '../components/BulkUploadModal'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
@@ -13,6 +13,7 @@ import { useTestCases } from '../hooks/useTestCases'
 import { useProjects } from '../hooks/useProjects'
 import { useUser } from '../context/UserContext'
 import { useSharedSteps } from '../hooks/useSharedSteps'
+import { useUserRole } from '../hooks/useUserRole'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
 import { exportTestCases } from '../utils/export'
@@ -39,10 +40,12 @@ const blankForm = () => ({
 
 export function TestCasesPage() {
   const { projectId } = useParams()
+  const [searchParams] = useSearchParams()
   const { testCases, addTestCase, updateTestCase, removeTestCase, removeTestCases } = useTestCases(projectId)
   const { members } = useTeamMembers()
   const { projects } = useProjects()
   const { user } = useUser()
+  const { isLead } = useUserRole()
   const projectName = projects.find((p) => p.id === projectId)?.name ?? projectId
   const confirm = useConfirm()
   const toast = useToast()
@@ -51,11 +54,11 @@ export function TestCasesPage() {
   const [showBulk, setShowBulk] = useState(false)
   const [editTc, setEditTc] = useState(null)   // tc being edited
   const [form, setForm] = useState(blankForm)
-  const [search, setSearch] = useState('')
-  const [fPriority, setFPriority] = useState('')
-  const [fStatus, setFStatus] = useState('')
-  const [fModule, setFModule] = useState('')
-  const [fAssignee, setFAssignee] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+  const [fPriority, setFPriority] = useState(() => searchParams.get('priority') || '')
+  const [fStatus, setFStatus] = useState(() => searchParams.get('status') || '')
+  const [fModule, setFModule] = useState(() => searchParams.get('module') || '')
+  const [fAssignee, setFAssignee] = useState(() => searchParams.get('assignee') || '')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState([])
@@ -114,7 +117,13 @@ export function TestCasesPage() {
       ? `This shared step group is currently referenced by some test cases. Deleting it will show warning logs in those cases. Are you sure you want to delete "${group.name}"?`
       : `Are you sure you want to delete shared steps "${group.name}"?`
     
-    if (await confirm(msg)) {
+    const ok = await confirm({
+      title: 'Delete shared steps?',
+      message: msg,
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (ok) {
       await removeSharedStep(group.id)
       toast.success('Shared step group deleted')
     }
@@ -275,19 +284,25 @@ export function TestCasesPage() {
               >
                 <DownloadIcon width={14} height={14} /> Export
               </button>
-              <button className="secondary-button" type="button" onClick={() => setShowBulk(true)}>
-                <UploadIcon width={14} height={14} /> Bulk upload
-              </button>
-              <button className="primary-button" type="button" onClick={() => setShowAdd(true)}>
-                + Add case
-              </button>
+              {isLead && (
+                <>
+                  <button className="secondary-button" type="button" onClick={() => setShowBulk(true)}>
+                    <UploadIcon width={14} height={14} /> Bulk upload
+                  </button>
+                  <button className="primary-button" type="button" onClick={() => setShowAdd(true)}>
+                    + Add case
+                  </button>
+                </>
+              )}
             </div>
           ) : (
-            <div className="page-actions-row">
-              <button className="primary-button" type="button" onClick={openAddShared}>
-                + Add shared steps
-              </button>
-            </div>
+            isLead && (
+              <div className="page-actions-row">
+                <button className="primary-button" type="button" onClick={openAddShared}>
+                  + Add shared steps
+                </button>
+              </div>
+            )
           )
         }
       />
@@ -347,29 +362,33 @@ export function TestCasesPage() {
           {selectedIds.length > 0 && (
             <div className="bulk-bar" aria-label="Bulk actions">
               <span>{selectedIds.length} case(s) selected</span>
-              <div className="bulk-actions">
-                <select
-                  aria-label="Bulk status select"
-                  value={bulkStatus}
-                  onChange={(e) => setBulkStatus(e.target.value)}
-                >
-                  {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={applyBulkStatus}
-                >
-                  Apply status
-                </button>
-                <button
-                  className="danger-button"
-                  type="button"
-                  onClick={handleBulkDelete}
-                >
-                  Delete selected
-                </button>
-              </div>
+              {isLead ? (
+                <div className="bulk-actions">
+                  <select
+                    aria-label="Bulk status select"
+                    value={bulkStatus}
+                    onChange={(e) => setBulkStatus(e.target.value)}
+                  >
+                    {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={applyBulkStatus}
+                  >
+                    Apply status
+                  </button>
+                  <button
+                    className="danger-button"
+                    type="button"
+                    onClick={handleBulkDelete}
+                  >
+                    Delete selected
+                  </button>
+                </div>
+              ) : (
+                <span className="text-muted" style={{ fontSize: 11, fontStyle: 'italic' }}>Actions restricted (read-only)</span>
+              )}
             </div>
           )}
 
@@ -379,9 +398,19 @@ export function TestCasesPage() {
             <>
             <div className="table-wrap">
               <table className="tc-table">
+                <colgroup>
+                  <col className="tc-col-check" />
+                  <col className="tc-col-id" />
+                  <col className="tc-col-title" />
+                  <col className="tc-col-module" />
+                  <col className="tc-col-priority" />
+                  <col className="tc-col-assignee" />
+                  <col className="tc-col-status" />
+                  <col className="tc-col-actions" />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style={{ width: 40 }} className="checkbox-th">
+                    <th className="checkbox-th">
                       <input
                         type="checkbox"
                         aria-label="Select all cases"
@@ -389,25 +418,25 @@ export function TestCasesPage() {
                         onChange={toggleVisiblePage}
                       />
                     </th>
-                    <th style={{ width: 100 }}>
+                    <th>
                       <SortTh col="_tcId" label="ID" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
                     <th>
                       <SortTh col="title" label="Title" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
-                    <th style={{ width: 140 }}>
+                    <th>
                       <SortTh col="module" label="Module" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
-                    <th style={{ width: 100 }}>
+                    <th>
                       <SortTh col="priority" label="Priority" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
-                    <th style={{ width: 132 }}>
+                    <th>
                       <SortTh col="assignee" label="Assignee" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
-                    <th style={{ width: 132 }}>
+                    <th>
                       <SortTh col="status" label="Status" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
-                    <th style={{ width: 120, textAlign: 'right' }}>Actions</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -433,6 +462,7 @@ export function TestCasesPage() {
                           className={`inline-select priority-${(tc.priority || 'Med').toLowerCase()}`}
                           value={tc.priority || 'Med'}
                           aria-label="Priority"
+                          disabled={!isLead}
                           onChange={(e) => updateTestCase(withHistory(
                             { ...tc, priority: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
                             historyEntry('priority_change', user, `Priority changed from ${tc.priority} to ${e.target.value}`, tc.priority, e.target.value),
@@ -447,6 +477,7 @@ export function TestCasesPage() {
                           className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
                           value={tc.status}
                           aria-label="Status"
+                          disabled={!isLead}
                           onChange={(e) => updateTestCase(withHistory(
                             { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
                             historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
@@ -460,19 +491,23 @@ export function TestCasesPage() {
                           <Link className="icon-btn-action" to={`/projects/${projectId}/test-cases/${tc.id}`} title="View detail" aria-label="View detail">
                             <ArrowRightIcon width={14} height={14} />
                           </Link>
-                          <button className="icon-btn-action" type="button" onClick={() => openEdit(tc)} title="Edit" aria-label="Edit">
-                            <PencilIcon width={14} height={14} />
-                          </button>
-                          <button className="icon-btn-action" type="button" onClick={() => cloneCase(tc)} title="Clone" aria-label="Clone">
-                            <CopyIcon width={14} height={14} />
-                          </button>
-                          <button className="icon-btn-action text-danger" type="button" title="Delete" aria-label="Delete"
-                            onClick={async () => {
-                              const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
-                              if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
-                            }}>
-                            <XIcon width={14} height={14} />
-                          </button>
+                          {isLead && (
+                            <>
+                              <button type="button" className="icon-btn-action" onClick={() => openEdit(tc)} title="Edit" aria-label="Edit">
+                                <PencilIcon width={14} height={14} />
+                              </button>
+                              <button className="icon-btn-action" type="button" onClick={() => cloneCase(tc)} title="Clone" aria-label="Clone">
+                                <CopyIcon width={14} height={14} />
+                              </button>
+                              <button className="icon-btn-action text-danger" type="button" title="Delete" aria-label="Delete"
+                                onClick={async () => {
+                                  const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
+                                  if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
+                                }}>
+                                <XIcon width={14} height={14} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -491,6 +526,7 @@ export function TestCasesPage() {
                         className={`inline-select status-select priority-${(tc.priority || 'Med').toLowerCase()}`}
                         value={tc.priority || 'Med'}
                         aria-label="Priority"
+                        disabled={!isLead}
                         onChange={(e) => updateTestCase(withHistory(
                           { ...tc, priority: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
                           historyEntry('priority_change', user, `Priority changed from ${tc.priority} to ${e.target.value}`, tc.priority, e.target.value),
@@ -502,6 +538,7 @@ export function TestCasesPage() {
                         className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'neutral'}`}
                         value={tc.status}
                         aria-label="Status"
+                        disabled={!isLead}
                         onChange={(e) => updateTestCase(withHistory(
                           { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
                           historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
@@ -528,19 +565,23 @@ export function TestCasesPage() {
                     <Link className="secondary-button mobile-card-action-btn" to={`/projects/${projectId}/test-cases/${tc.id}`}>
                       Open
                     </Link>
-                    <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEdit(tc)}>
-                      Edit
-                    </button>
-                    <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => cloneCase(tc)}>
-                      Clone
-                    </button>
-                    <button className="danger-button mobile-card-action-btn" type="button"
-                      onClick={async () => {
-                        const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
-                        if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
-                      }}>
-                      Delete
-                    </button>
+                    {isLead && (
+                      <>
+                        <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEdit(tc)}>
+                          Edit
+                        </button>
+                        <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => cloneCase(tc)}>
+                          Clone
+                        </button>
+                        <button className="danger-button mobile-card-action-btn" type="button"
+                          onClick={async () => {
+                            const ok = await confirm({ title: 'Delete test case?', message: `"${tc.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
+                            if (ok) { removeTestCase(tc.id); toast.success('Test case deleted') }
+                          }}>
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -627,12 +668,18 @@ export function TestCasesPage() {
                       <td>{g.steps?.length || 0} steps</td>
                       <td style={{ textAlign: 'right' }}>
                         <div className="table-row-actions" style={{ justifyContent: 'flex-end' }}>
-                          <button type="button" className="icon-btn-action" onClick={() => openEditShared(g)} title="Edit" aria-label="Edit">
-                            <PencilIcon width={14} height={14} />
-                          </button>
-                          <button type="button" className="icon-btn-action text-danger" onClick={() => handleDeleteShared(g)} title="Delete" aria-label="Delete">
-                            <XIcon width={14} height={14} />
-                          </button>
+                          {isLead ? (
+                            <>
+                              <button type="button" className="icon-btn-action" onClick={() => openEditShared(g)} title="Edit" aria-label="Edit">
+                                <PencilIcon width={14} height={14} />
+                              </button>
+                              <button type="button" className="icon-btn-action text-danger" onClick={() => handleDeleteShared(g)} title="Delete" aria-label="Delete">
+                                <XIcon width={14} height={14} />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-muted" style={{ fontSize: 11 }}>Read-only</span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -653,16 +700,28 @@ export function TestCasesPage() {
                     <span className="shared-badge">Shared block</span>
                   </div>
                   <div className="mobile-card-details">
-                    <p className="text-muted" style={{ margin: '4px 0 8px 0', fontSize: 12 }}>{g.description || 'No description'}</p>
-                    <span style={{ fontSize: 12 }}>{g.steps?.length || 0} steps</span>
+                    <div>
+                      <span>Description</span>
+                      <strong>{g.description || '—'}</strong>
+                    </div>
+                    <div>
+                      <span>Steps Count</span>
+                      <strong>{g.steps?.length || 0} steps</strong>
+                    </div>
                   </div>
                   <div className="mobile-card-actions">
-                    <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEditShared(g)}>
-                      Edit
-                    </button>
-                    <button className="danger-button mobile-card-action-btn" type="button" onClick={() => handleDeleteShared(g)}>
-                      Delete
-                    </button>
+                    {isLead ? (
+                      <>
+                        <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEditShared(g)}>
+                          Edit
+                        </button>
+                        <button className="danger-button mobile-card-action-btn" type="button" onClick={() => handleDeleteShared(g)}>
+                          Delete
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 11, padding: '8px 0' }}>Read-only</span>
+                    )}
                   </div>
                 </div>
               ))
@@ -673,7 +732,7 @@ export function TestCasesPage() {
 
       {showSharedModal && (
         <Modal title={editSharedGroup ? 'Edit Shared Steps' : 'New Shared Steps'} onClose={() => setShowSharedModal(false)}>
-          <form onSubmit={handleSaveSharedGroup} className="form-layout">
+          <form onSubmit={handleSaveSharedGroup} className="modal-form">
             <label>
               Group Name <span className="required">*</span>
               <input

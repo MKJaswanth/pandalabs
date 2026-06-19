@@ -184,6 +184,10 @@ export const subscribeTeamMembers   = (onChange)             => subscribe(member
 export const saveTeamMemberRemote   = (member)               => upsert(membersPath(), member)
 export const deleteTeamMemberRemote = (memberId)             => tombstone(membersPath(), memberId)
 
+export const subscribeWorkspaceUsers = (onChange)             => subscribe([...workspacePath(), 'members'], onChange, (a, b) =>
+  String(a.name ?? '').localeCompare(String(b.name ?? '')),
+)
+
 export const subscribeTestCases     = (projectId, onChange)  => subscribe(testCasesPath(projectId), onChange, byCreatedAtAsc)
 export const saveTestCaseRemote     = (projectId, testCase)  => upsert(testCasesPath(projectId), testCase)
 export const deleteTestCaseRemote   = (projectId, testCaseId) => tombstone(testCasesPath(projectId), testCaseId)
@@ -206,6 +210,19 @@ function getCurrentUserName() {
 export async function syncUserProfileRemote(firebaseUser, customName) {
   if (!isFirebaseEnabled || !firebaseUser || firebaseUser.isAnonymous || !db) return
   ensureFirebase()
+
+  // Check if this user is marked as deleted in teamMembers to prevent session recreation
+  try {
+    const { getTeamMembersRaw, isDeleted } = await import('./storage')
+    const allMembers = getTeamMembersRaw()
+    const matching = allMembers.find((m) => m.uid === firebaseUser.uid)
+    if (matching && isDeleted(matching)) {
+      console.warn('[remoteStorage] User is deleted from workspace, skipping profile sync')
+      return
+    }
+  } catch (err) {
+    console.error('[remoteStorage] Failed to check deletion status before profile sync:', err)
+  }
 
   const memberRef = doc(db, ...workspacePath(), 'members', firebaseUser.uid)
   try {
@@ -235,6 +252,15 @@ export async function syncUserProfileRemote(firebaseUser, customName) {
     await setDoc(memberRef, cleanRecord(profile), { merge: true })
   } catch (err) {
     console.error('[remoteStorage] Failed to sync user profile:', err)
+  }
+}
+
+export async function deleteWorkspaceUserRemote(uid) {
+  if (!isFirebaseEnabled || !db) return
+  try {
+    await deleteDoc(doc(db, ...workspacePath(), 'members', uid))
+  } catch (err) {
+    console.error('[remoteStorage] Failed to delete workspace user profile:', err)
   }
 }
 
@@ -363,3 +389,12 @@ export async function deleteSharedStepRemote(projectId, id) {
     console.error('[remoteStorage] Shared step deletion failed:', err)
   }
 }
+
+const requirementsPath = (projectId) => [...projectPath(projectId), 'requirements']
+
+export const subscribeRequirements = (projectId, onChange) =>
+  subscribe(requirementsPath(projectId), onChange, byCreatedAtAsc)
+export const saveRequirementRemote = (projectId, requirement) =>
+  upsert(requirementsPath(projectId), requirement)
+export const deleteRequirementRemote = (projectId, id) =>
+  tombstone(requirementsPath(projectId), id)

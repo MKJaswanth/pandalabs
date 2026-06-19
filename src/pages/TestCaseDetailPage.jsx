@@ -17,6 +17,7 @@ import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/his
 import { newId } from '../utils/id'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
 import { ArrowRightIcon } from '../components/Icons'
+import { useUserRole } from '../hooks/useUserRole'
 
 const severityTone = { Critical: 'failed', Major: 'pending', Minor: 'passed' }
 const PRIORITIES = ['High', 'Med', 'Low']
@@ -26,6 +27,7 @@ const BUG_STATUSES = ['Open', 'In review', 'Closed']
 export function TestCaseDetailPage() {
   const { projectId, testCaseId } = useParams()
   const { user } = useUser()
+  const { isLead } = useUserRole()
   const { testCases, updateTestCase, removeTestCase } = useTestCases(projectId)
   const { bugs, addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
@@ -140,27 +142,29 @@ export function TestCaseDetailPage() {
         title={tc.title}
         description={tc.module ? `Module: ${tc.module}` : 'No module'}
         action={
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="secondary-button" type="button" onClick={openEdit}>Edit</button>
-            <select
-              className="secondary-button"
-              value={tc.status}
-              aria-label="Set status"
-              onChange={(e) => updateTestCase(withHistory(
-                { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
-                historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
-              ))}
-            >
-              {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
-            </select>
-            <button
-              className="danger-button"
-              type="button"
-              onClick={handleDelete}
-            >
-              Delete
-            </button>
-          </div>
+          isLead && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="secondary-button" type="button" onClick={openEdit}>Edit</button>
+              <select
+                className="secondary-button"
+                value={tc.status}
+                aria-label="Set status"
+                onChange={(e) => updateTestCase(withHistory(
+                  { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
+                  historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
+                ))}
+              >
+                {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
+              </select>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={handleDelete}
+              >
+                Delete
+              </button>
+            </div>
+          )
         }
       />
 
@@ -195,8 +199,13 @@ export function TestCaseDetailPage() {
             </div>
             {steps.length === 0 ? (
               <p className="detail-empty">
-                No steps defined.{' '}
-                <button className="link-btn" onClick={openEdit}>Add steps <ArrowRightIcon width={14} height={14} /></button>
+                No steps defined.
+                {isLead && (
+                  <>
+                    {' '}
+                    <button className="link-btn" onClick={openEdit}>Add steps <ArrowRightIcon width={14} height={14} /></button>
+                  </>
+                )}
               </p>
             ) : (
               <ol className="step-list">

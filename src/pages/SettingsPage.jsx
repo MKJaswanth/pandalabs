@@ -7,12 +7,14 @@ import { useToast } from '../context/useToast'
 import { useProjects } from '../hooks/useProjects'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useActivity } from '../hooks/useActivity'
+import { useUserRole } from '../hooks/useUserRole'
 
 export function SettingsPage() {
   const { projectId } = useParams()
   const { projects, updateProject, removeProject } = useProjects()
-  const { members, addMember } = useTeamMembers()
+  const { members, addMember, updateMember } = useTeamMembers()
   const { getActivitiesByProject } = useActivity()
+  const { isLead } = useUserRole()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()
@@ -85,7 +87,7 @@ export function SettingsPage() {
         <form className="settings-form" onSubmit={handleSave}>
           <label>
             Name <span className="required">*</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} />
+            <input value={name} onChange={(e) => setName(e.target.value)} disabled={!isLead} />
           </label>
           <label>
             Description
@@ -93,10 +95,11 @@ export function SettingsPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Short description"
+              disabled={!isLead}
             />
           </label>
           <div className="settings-form-footer">
-            <button type="submit" className="primary-button">
+            <button type="submit" className="primary-button" disabled={!isLead}>
               {saved ? <><CheckIcon width={14} height={14} /> Saved</> : 'Save changes'}
             </button>
           </div>
@@ -118,57 +121,77 @@ export function SettingsPage() {
                       <div className="member-info">
                         <span className="avatar">{m.name.slice(0, 2).toUpperCase()}</span>
                         <span className="member-name">{m.name}</span>
+                        {m.uid && (
+                          <span className="shared-badge" style={{ marginLeft: 8, background: '#eff6ff', color: '#1d4ed8' }}>
+                            Workspace user
+                          </span>
+                        )}
+                        <select
+                          className="inline-select status-select status-select--neutral"
+                          style={{ marginLeft: 8 }}
+                          value={m.role || 'Viewer'}
+                          disabled={!isLead}
+                          onChange={(e) => updateMember({ ...m, role: e.target.value })}
+                        >
+                          <option value="Viewer">Viewer</option>
+                          <option value="Tester">Tester</option>
+                          <option value="QA Lead">QA Lead</option>
+                        </select>
                       </div>
-                      <button
-                        type="button"
-                        className="member-remove-btn"
-                        aria-label={`Remove ${m.name}`}
-                        onClick={() => removeMemberFromProject(m.id)}
-                      >
-                        <XIcon width={12} height={12} />
-                      </button>
+                      {isLead && (
+                        <button
+                          type="button"
+                          className="member-remove-btn"
+                          aria-label={`Remove ${m.name}`}
+                          onClick={() => removeMemberFromProject(m.id)}
+                        >
+                          <XIcon width={12} height={12} />
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
             </div>
 
-            <div className="member-actions-wrapper">
-              <span className="section-subtitle">Assign team members</span>
-              <div className="assign-controls">
-                {nonMembers.length > 0 && (
-                  <div className="control-group">
-                    <label htmlFor="existing-member-select">Choose from existing team</label>
-                    <select
-                      id="existing-member-select"
-                      className="settings-select"
-                      defaultValue=""
-                      onChange={(e) => {
-                        if (e.target.value) { addExistingMember(e.target.value); e.target.value = '' }
-                      }}
-                    >
-                      <option value="" disabled>Select member…</option>
-                      {nonMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
-                  </div>
-                )}
+            {isLead && (
+              <div className="member-actions-wrapper">
+                <span className="section-subtitle">Assign team members</span>
+                <div className="assign-controls">
+                  {nonMembers.length > 0 && (
+                    <div className="control-group">
+                      <label htmlFor="existing-member-select">Choose from existing team</label>
+                      <select
+                        id="existing-member-select"
+                        className="settings-select"
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (e.target.value) { addExistingMember(e.target.value); e.target.value = '' }
+                        }}
+                      >
+                        <option value="" disabled>Select member…</option>
+                        {nonMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </div>
+                  )}
 
-                <form className="control-group" onSubmit={handleAddNew}>
-                  <label htmlFor="new-member-input">Create & assign new member</label>
-                  <div className="input-with-button">
-                    <input
-                      id="new-member-input"
-                      value={newMemberName}
-                      onChange={(e) => setNewMemberName(e.target.value)}
-                      placeholder="Name (e.g. John Doe)"
-                    />
-                    <button type="submit" className="secondary-button" disabled={!newMemberName.trim()}>
-                      Add
-                    </button>
-                  </div>
-                </form>
+                  <form className="control-group" onSubmit={handleAddNew}>
+                    <label htmlFor="new-member-input">Create & assign new member</label>
+                    <div className="input-with-button">
+                      <input
+                        id="new-member-input"
+                        value={newMemberName}
+                        onChange={(e) => setNewMemberName(e.target.value)}
+                        placeholder="Name (e.g. John Doe)"
+                      />
+                      <button type="submit" className="secondary-button" disabled={!newMemberName.trim()}>
+                        Add
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </section>
@@ -203,18 +226,20 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="panel settings-section danger-zone-panel">
-        <div className="section-header"><h2>Danger zone</h2></div>
-        <div className="settings-body danger-body">
-          <div className="danger-text">
-            <strong>Delete this project</strong>
-            <p>Permanently removes all test cases, bugs, and runs. This action cannot be undone.</p>
+      {isLead && (
+        <section className="panel settings-section danger-zone-panel">
+          <div className="section-header"><h2>Danger zone</h2></div>
+          <div className="settings-body danger-body">
+            <div className="danger-text">
+              <strong>Delete this project</strong>
+              <p>Permanently removes all test cases, bugs, and runs. This action cannot be undone.</p>
+            </div>
+            <button type="button" className="danger-button" onClick={handleDelete}>
+              Delete project
+            </button>
           </div>
-          <button type="button" className="danger-button" onClick={handleDelete}>
-            Delete project
-          </button>
-        </div>
-      </section>
+        </section>
+      )}
     </>
   )
 }

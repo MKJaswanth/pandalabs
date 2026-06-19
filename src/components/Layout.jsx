@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useUser } from '../context/UserContext'
 import { useProjects } from '../hooks/useProjects'
@@ -12,6 +12,8 @@ import { usePresence } from '../hooks/usePresence'
 import { ChevronDownIcon, EyeIcon, BugIcon, CheckCircleIcon } from './Icons'
 import { useToast } from '../context/useToast'
 import { useNotifications } from '../hooks/useNotifications'
+import { useUserRole } from '../hooks/useUserRole'
+
 
 const globalNav = [
   { label: 'Dashboard', to: '/dashboard', icon: 'dashboard' },
@@ -23,6 +25,7 @@ const globalNav = [
 
 const projectNav = [
   { label: 'Test cases', path: 'test-cases', icon: 'cases' },
+  { label: 'Requirements', path: 'requirements', icon: 'requirements' },
   { label: 'Test runs', path: 'test-runs', icon: 'runs' },
   { label: 'Bug tracker', path: 'bugs', icon: 'bug' },
   { label: 'Reports', path: 'reports', icon: 'reports' },
@@ -38,6 +41,7 @@ function Icon({ name }) {
     activity: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
     backup: <><path d="M12 3v10" /><path d="m8 9 4 4 4-4" /><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" /></>,
     cases: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="m3 6 .8.8L5.5 5" /><path d="m3 12 .8.8 1.7-1.8" /><path d="m3 18 .8.8 1.7-1.8" /></>,
+    requirements: <><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /><path d="m9 11 3 3L22 4" /></>,
     runs: <><path d="M5 4v16" /><path d="m5 12 6-4v8Z" /><path d="M15 8h4" /><path d="M15 16h4" /></>,
     bug: <><path d="M8 8a4 4 0 0 1 8 0v8a4 4 0 0 1-8 0Z" /><path d="M3 13h5" /><path d="M16 13h5" /><path d="M4 20l4-3" /><path d="m16 17 4 3" /><path d="M9 4 7 2" /><path d="m15 4 2-2" /></>,
     settings: <><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-1.9.3 1.7 1.7 0 0 0-.8 1.6V22H9.1v-.2a1.7 1.7 0 0 0-.8-1.6 1.7 1.7 0 0 0-1.9-.3l-.2.1-2-3.4.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 1.9-.3A1.7 1.7 0 0 0 9.1 2V2h5.8v.2a1.7 1.7 0 0 0 .8 1.6 1.7 1.7 0 0 0 1.9.3l.2-.1 2 3.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></>,
@@ -48,6 +52,7 @@ function Icon({ name }) {
 function UserPill() {
   const { user, updateUser } = useUser()
   const { firebaseUser, signOut } = useAuth()
+  const { role } = useUserRole()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -82,7 +87,13 @@ function UserPill() {
           : <span className="user-pill-avatar">{initials}</span>
         }
         <span className="user-pill-name">{displayName}</span>
-        {isGuest && <span className="user-guest-badge">Guest</span>}
+        {isGuest ? (
+          <span className="user-guest-badge">Guest</span>
+        ) : (
+          <span className={`role-badge role-badge--${role === 'QA Lead' ? 'lead' : role === 'Tester' ? 'tester' : 'viewer'}`} style={{ marginLeft: '6px', marginRight: '4px', flexShrink: 0 }}>
+            {role}
+          </span>
+        )}
         <ChevronDownIcon width={12} height={12} />
       </button>
 
@@ -93,12 +104,22 @@ function UserPill() {
               ? <img className="user-dropdown-photo" src={photoURL} alt="" aria-hidden referrerPolicy="no-referrer" />
               : <span className="avatar">{initials}</span>
             }
-            <div>
-              <strong>{displayName}</strong>
+            <div style={{ display: 'grid', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <strong style={{ margin: 0 }}>{displayName}</strong>
+                {!isGuest && (
+                  <span className={`role-badge role-badge--${role === 'QA Lead' ? 'lead' : role === 'Tester' ? 'tester' : 'viewer'}`}>
+                    {role}
+                  </span>
+                )}
+              </div>
               <span>{isGuest ? 'Sign in to sync across devices' : (firebaseUser?.email ?? 'Local mode')}</span>
             </div>
           </div>
           <hr className="user-dropdown-divider" />
+          <Link className="user-dropdown-item" to="/workspace/settings" onClick={() => setOpen(false)} style={{ textDecoration: 'none' }}>
+            Workspace Settings
+          </Link>
           {!isGuest && (
             <button className="user-dropdown-item" role="menuitem" onClick={startEdit}>
               Edit display name
@@ -147,10 +168,16 @@ function UserPill() {
   )
 }
 
+
 function ProjectSidebar({ projectId }) {
   const { projects } = useProjects()
+  const { isLead } = useUserRole()
   const project = projects.find((p) => p.id === projectId)
   const base = `/projects/${projectId}`
+
+  const visibleNav = isLead
+    ? projectNav
+    : projectNav.filter((item) => item.path !== 'settings')
 
   return (
     <aside className="project-sidebar" aria-label="Project navigation">
@@ -159,7 +186,7 @@ function ProjectSidebar({ projectId }) {
         <strong>{project?.name ?? 'Unknown'}</strong>
       </div>
       <nav>
-        {projectNav.map((item) => (
+        {visibleNav.map((item) => (
           <NavLink key={item.path} to={`${base}/${item.path}`}>
             <Icon name={item.icon} />
             <span>{item.label}</span>

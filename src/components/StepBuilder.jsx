@@ -101,7 +101,7 @@ export function StepBuilder({ steps, onChange, sharedSteps = [] }) {
               className="step-add secondary"
               onClick={() => setShowSelector(!showSelector)}
             >
-              + Add shared step block
+              + Shared steps
             </button>
             
             {showSelector && (

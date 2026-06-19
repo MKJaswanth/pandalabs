@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import { EvidenceLinksField } from '../components/EvidenceLinksField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
@@ -149,6 +149,34 @@ export function TestRunsPage() {
   const [selectedIds, setSelectedIds] = useState(() => testCases.map((tc) => tc.id))
   const [currentIndex, setCurrentIndex] = useState(0)
   const activeCaseRef = useRef(null)
+
+  const location = useLocation()
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search)
+    const runCasesParam = searchParams.get('runCases')
+    const reqKeyParam = searchParams.get('reqKey')
+    const reqTitleParam = searchParams.get('reqTitle')
+
+    if (runCasesParam) {
+      const caseIds = runCasesParam.split(',').filter(Boolean)
+      
+      setTimeout(() => {
+        setSelectedIds(caseIds)
+        if (reqKeyParam && reqTitleParam) {
+          setRunName(`Run for ${decodeURIComponent(reqKeyParam)}: ${decodeURIComponent(reqTitleParam)}`)
+        } else if (reqKeyParam) {
+          setRunName(`Run for ${decodeURIComponent(reqKeyParam)}`)
+        } else if (reqTitleParam) {
+          setRunName(`Run for ${decodeURIComponent(reqTitleParam)}`)
+        } else {
+          setRunName('Run for Requirement Cases')
+        }
+        setDraftDismissed(true)
+        setMode('setup')
+      }, 0)
+    }
+  }, [location.search])
 
   useEffect(() => {
     if (activeCaseRef.current) {
@@ -720,7 +748,15 @@ export function TestRunsPage() {
             <div className="empty-table-row">No test cases available for this project.</div>
           ) : (
             <div className="table-wrap">
-              <table>
+              <table className="run-case-picker-table">
+                <colgroup>
+                  <col className="rcp-col-check" />
+                  <col className="rcp-col-id" />
+                  <col className="rcp-col-title" />
+                  <col className="rcp-col-module" />
+                  <col className="rcp-col-priority" />
+                  <col className="rcp-col-status" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th></th>
@@ -1159,15 +1195,24 @@ export function TestRunsPage() {
             </span>
           </div>
           <div className="table-wrap">
-            <table>
+            <table className="run-list-table">
+              <colgroup>
+                <col className="rl-col-date" />
+                <col className="rl-col-name" />
+                <col className="rl-col-num" />
+                <col className="rl-col-num" />
+                <col className="rl-col-num" />
+                <col className="rl-col-num" />
+                <col className="rl-col-by" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Name</th>
-                  <th>Total</th>
-                  <th>Pass</th>
-                  <th>Fail</th>
-                  <th>Blocker</th>
+                  <th className="rl-num">Total</th>
+                  <th className="rl-num">Pass</th>
+                  <th className="rl-num">Fail</th>
+                  <th className="rl-num">Blocker</th>
                   <th>Executed by</th>
                 </tr>
               </thead>
@@ -1186,10 +1231,10 @@ export function TestRunsPage() {
                         {run.name || 'Test run'}
                       </Link>
                     </td>
-                    <td>{run.total}</td>
-                    <td className="metric-passed">{run.passed}</td>
-                    <td className="metric-failed">{run.failed}</td>
-                    <td>{run.blocker ?? 0}</td>
+                    <td className="rl-num">{run.total}</td>
+                    <td className="rl-num metric-passed">{run.passed}</td>
+                    <td className="rl-num metric-failed">{run.failed}</td>
+                    <td className="rl-num">{run.blocker ?? 0}</td>
                     <td>{run.executedBy || '-'}</td>
                   </tr>
                 ))}

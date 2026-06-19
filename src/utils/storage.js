@@ -403,3 +403,17 @@ export const saveSharedStep = (projectId, group) => {
 }
 export const deleteSharedStep = (projectId, id) =>
   set(sharedStepsKey(projectId), markDeleted(getSharedStepsRaw(projectId), id))
+
+// Requirements (link test cases → requirements for coverage)
+export const requirementsKey = (projectId) => `${cachePrefix()}requirements_${projectId}`
+export const getRequirementsRaw = (projectId) => get(requirementsKey(projectId)) ?? []
+export const getRequirements = (projectId) => excludeDeleted(getRequirementsRaw(projectId))
+export const setRequirements = (projectId, requirements) => set(requirementsKey(projectId), requirements)
+export const saveRequirement = (projectId, requirement) => {
+  const list = getRequirementsRaw(projectId)
+  const idx = list.findIndex((r) => r.id === requirement.id)
+  idx >= 0 ? (list[idx] = requirement) : list.push(requirement)
+  set(requirementsKey(projectId), list)
+}
+export const deleteRequirement = (projectId, id) =>
+  set(requirementsKey(projectId), markDeleted(getRequirementsRaw(projectId), id))
