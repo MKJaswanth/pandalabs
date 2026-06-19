@@ -9,7 +9,8 @@ import { getStoragePercent, getStorageStatus } from '../utils/storageQuota'
 import { useRemoteSync } from '../hooks/useRemoteSync'
 import { getProjectReportMetrics } from '../utils/reportMetrics'
 import { usePresence } from '../hooks/usePresence'
-import { ChevronDownIcon } from './Icons'
+import { ChevronDownIcon, EyeIcon } from './Icons'
+import { useToast } from '../context/useToast'
 
 const globalNav = [
   { label: 'Dashboard', to: '/dashboard', icon: 'dashboard' },
@@ -170,22 +171,47 @@ function ProjectSidebar({ projectId }) {
 
 function ProjectPresence({ projectId, currentPage }) {
   const activeUsers = usePresence(projectId, currentPage)
+  const toast = useToast()
+
   if (!activeUsers || activeUsers.length === 0) return null
 
+  const handleAvatarClick = (userName) => {
+    navigator.clipboard.writeText(userName)
+      .then(() => {
+        toast.success(`Copied ${userName} to clipboard`)
+      })
+      .catch((err) => {
+        console.error('Failed to copy username: ', err)
+      })
+  }
+
   return (
-    <div className="project-presence" title="Active viewers in this project">
+    <div className="project-presence">
       {activeUsers.map((u) => {
         const initials = u.userName
           ? u.userName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
           : '?'
         return (
-          <span
-            key={u.id}
-            className="presence-avatar"
-            title={`${u.userName} (Viewing ${u.currentPage || 'Project'})`}
-          >
-            {initials}
-          </span>
+          <div key={u.id} className="presence-avatar-wrap">
+            <button
+              type="button"
+              className="presence-avatar"
+              onClick={() => handleAvatarClick(u.userName)}
+              aria-label={`Copy ${u.userName} to clipboard`}
+            >
+              {initials}
+            </button>
+            <div className="presence-tooltip">
+              <div className="presence-tooltip-name">
+                <span className="presence-tooltip-status-dot"></span>
+                {u.userName}
+              </div>
+              <div className="presence-tooltip-page">
+                <EyeIcon width={12} height={12} style={{ opacity: 0.7 }} />
+                <span>{u.currentPage || 'Project'}</span>
+              </div>
+            </div>
+          </div>
         )
       })}
     </div>

@@ -5340,35 +5340,106 @@ button { font-family: inherit; }
 .project-presence {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-left: 12px;
+}
+
+.presence-avatar-wrap {
+  position: relative;
+  display: inline-flex;
 }
 
 .presence-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--primary-color, #1a73e8);
   color: #ffffff;
   font-size: 10px;
   font-weight: 600;
-  border: 1.5px solid var(--panel-bg, #ffffff);
-  cursor: help;
-  position: relative;
+  border: 2px solid var(--panel-bg, #ffffff);
+  cursor: pointer;
   box-shadow: 0 1px 3px rgba(0,0,0,0.15);
   text-transform: uppercase;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s;
+  padding: 0;
+  margin: 0;
 }
 
-.presence-avatar:nth-child(2n) {
-  background: #34a853; /* Google Green */
+.presence-avatar:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+  z-index: 10;
 }
-.presence-avatar:nth-child(3n) {
-  background: #f9ab00; /* Google Yellow */
+
+.presence-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, 8px) scale(0.95);
+  background: #202124;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.presence-avatar:nth-child(4n) {
-  background: #ea4335; /* Google Red */
+
+.presence-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: #202124;
 }
+
+.presence-avatar-wrap:hover .presence-tooltip {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 8px) scale(1);
+}
+
+.presence-tooltip-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.presence-tooltip-status-dot {
+  width: 6px;
+  height: 6px;
+  background: #34a853;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.presence-tooltip-page {
+  font-size: 11px;
+  color: #bdc1c6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Cycle colors for avatars */
+.presence-avatar-wrap:nth-child(5n+1) .presence-avatar { background: #1a73e8; }
+.presence-avatar-wrap:nth-child(5n+2) .presence-avatar { background: #34a853; }
+.presence-avatar-wrap:nth-child(5n+3) .presence-avatar { background: #f9ab00; }
+.presence-avatar-wrap:nth-child(5n+4) .presence-avatar { background: #ea4335; }
+.presence-avatar-wrap:nth-child(5n+5) .presence-avatar { background: #8ab4f8; }
+
 
