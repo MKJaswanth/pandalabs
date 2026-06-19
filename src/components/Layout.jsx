@@ -8,6 +8,7 @@ import { isFirebaseEnabled } from '../utils/firebase'
 import { getStoragePercent, getStorageStatus } from '../utils/storageQuota'
 import { useRemoteSync } from '../hooks/useRemoteSync'
 import { getProjectReportMetrics } from '../utils/reportMetrics'
+import { usePresence } from '../hooks/usePresence'
 import { ChevronDownIcon } from './Icons'
 
 const globalNav = [
@@ -167,7 +168,32 @@ function ProjectSidebar({ projectId }) {
   )
 }
 
+function ProjectPresence({ projectId, currentPage }) {
+  const activeUsers = usePresence(projectId, currentPage)
+  if (!activeUsers || activeUsers.length === 0) return null
+
+  return (
+    <div className="project-presence" title="Active viewers in this project">
+      {activeUsers.map((u) => {
+        const initials = u.userName
+          ? u.userName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+          : '?'
+        return (
+          <span
+            key={u.id}
+            className="presence-avatar"
+            title={`${u.userName} (Viewing ${u.currentPage || 'Project'})`}
+          >
+            {initials}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function ProjectOverview({ projectId }) {
+  const { pathname } = useLocation()
   const { projects } = useProjects()
   const project = projects.find((p) => p.id === projectId)
   if (!project) return null
@@ -186,12 +212,20 @@ function ProjectOverview({ projectId }) {
     health
   } = metrics
 
+  let currentPage = 'Overview'
+  if (pathname.includes('/test-cases')) currentPage = 'Test Cases'
+  else if (pathname.includes('/test-runs')) currentPage = 'Test Runs'
+  else if (pathname.includes('/bugs')) currentPage = 'Bug Tracker'
+  else if (pathname.includes('/reports')) currentPage = 'Reports'
+  else if (pathname.includes('/settings')) currentPage = 'Settings'
+
   return (
     <section className="project-overview-bar" aria-label="Project health summary">
       <div className="project-bar-info">
         <span className={`project-health-badge health-badge--${health.tone}`}>{health.label}</span>
         <h2>{project.name}</h2>
         {project.description && <span className="project-bar-desc">— {project.description}</span>}
+        <ProjectPresence projectId={projectId} currentPage={currentPage} />
       </div>
       <div className="project-bar-metrics">
         <div className="bar-metric">

@@ -10,6 +10,7 @@ import {
   query,
   orderBy,
   limit,
+  serverTimestamp,
 } from 'firebase/firestore'
 import { db, defaultWorkspaceId, isFirebaseEnabled, auth } from './firebase'
 import { setSyncStatus } from './syncStatus'
@@ -284,3 +285,45 @@ export const saveRunDraftRemote = (projectId, draft) =>
 
 export const deleteRunDraftRemote = (projectId, draftId) =>
   tombstone([...projectPath(projectId), 'runDrafts'], draftId)
+
+const presencePath = (projectId) => [...projectPath(projectId), 'presence']
+
+export async function updatePresenceRemote(projectId, userId, userName, currentPage) {
+  if (!isFirebaseEnabled || !db) return
+  try {
+    const ref = doc(db, ...presencePath(projectId), userId)
+    await setDoc(ref, {
+      userId,
+      userName,
+      currentPage,
+      lastActive: serverTimestamp(),
+    })
+  } catch (err) {
+    console.error('[remoteStorage] Presence update failed:', err)
+  }
+}
+
+export async function deletePresenceRemote(projectId, userId) {
+  if (!isFirebaseEnabled || !db) return
+  try {
+    const ref = doc(db, ...presencePath(projectId), userId)
+    await deleteDoc(ref)
+  } catch (err) {
+    console.error('[remoteStorage] Presence deletion failed:', err)
+  }
+}
+
+export function subscribePresence(projectId, onChange) {
+  ensureFirebase()
+  const q = collection(db, ...presencePath(projectId))
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
+      onChange(rows)
+    },
+    (error) => {
+      console.error('[remoteStorage] Presence subscription failed:', error)
+    }
+  )
+}
