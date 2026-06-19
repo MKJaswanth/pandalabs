@@ -12,6 +12,7 @@ import { useBugs } from '../hooks/useBugs'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
 import { useActivity } from '../hooks/useActivity'
+import { useSharedSteps } from '../hooks/useSharedSteps'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
 import { newId } from '../utils/id'
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
@@ -29,6 +30,7 @@ export function TestCaseDetailPage() {
   const { bugs, addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
   const { activities } = useActivity()
+  const { sharedSteps } = useSharedSteps(projectId)
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()
@@ -198,7 +200,32 @@ export function TestCaseDetailPage() {
               </p>
             ) : (
               <ol className="step-list">
-                {steps.map((step, i) => <li key={i}>{step}</li>)}
+                {steps.map((step, i) => {
+                  const isSharedRef = typeof step === 'string' && step.startsWith('shared_step_group:')
+                  if (isSharedRef) {
+                    const groupId = step.split(':')[1]
+                    const group = sharedSteps.find((g) => g.id === groupId)
+                    return (
+                      <li key={i} className="shared-step-display-item">
+                        <div className="shared-step-display-header">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6, color: 'var(--primary-color, #1a73e8)' }}>
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                          </svg>
+                          <strong>{group ? group.name : 'Deleted Shared Step Group'}</strong>
+                          <span className="shared-badge">Shared block</span>
+                        </div>
+                        {group?.steps && (
+                          <ol className="shared-step-display-list">
+                            {group.steps.map((nested, nIdx) => (
+                              <li key={nIdx}>{nested}</li>
+                            ))}
+                          </ol>
+                        )}
+                      </li>
+                    )
+                  }
+                  return <li key={i}>{step}</li>
+                })}
               </ol>
             )}
           </div>
@@ -381,7 +408,7 @@ export function TestCaseDetailPage() {
               <textarea rows={2} value={form.preconditions} onChange={set('preconditions')} placeholder="What must be true before this test runs?" />
             </label>
             <label>Steps</label>
-            <StepBuilder steps={form.steps} onChange={(steps) => setForm((f) => ({ ...f, steps }))} />
+            <StepBuilder steps={form.steps} onChange={(steps) => setForm((f) => ({ ...f, steps }))} sharedSteps={sharedSteps} />
             <label>Test Data
               <input value={form.testData} onChange={set('testData')} placeholder="Input values, credentials…" />
             </label>

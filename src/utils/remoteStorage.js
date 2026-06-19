@@ -345,3 +345,21 @@ export async function deleteNotificationRemote(id) {
     console.error('[remoteStorage] Notification deletion failed:', err)
   }
 }
+
+const sharedStepsPath = (projectId) => [...projectPath(projectId), 'sharedSteps']
+
+export const subscribeSharedSteps = (projectId, onChange) => subscribe(sharedStepsPath(projectId), onChange, byCreatedAtAsc)
+
+export async function saveSharedStepRemote(projectId, group) {
+  return upsert(sharedStepsPath(projectId), group)
+}
+
+export async function deleteSharedStepRemote(projectId, id) {
+  if (!isFirebaseEnabled || !db) return
+  try {
+    const ref = doc(db, ...sharedStepsPath(projectId), id)
+    await deleteDoc(ref)
+  } catch (err) {
+    console.error('[remoteStorage] Shared step deletion failed:', err)
+  }
+}

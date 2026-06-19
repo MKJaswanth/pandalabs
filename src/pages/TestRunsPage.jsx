@@ -12,6 +12,7 @@ import { useBugs } from '../hooks/useBugs'
 import { useProjects } from '../hooks/useProjects'
 import { useTestCases } from '../hooks/useTestCases'
 import { useTestRuns } from '../hooks/useTestRuns'
+import { useSharedSteps } from '../hooks/useSharedSteps'
 import { historyEntry, withHistory } from '../utils/history'
 import { newId } from '../utils/id'
 import { clearRunDraft, getRunDraft, saveRunDraft } from '../utils/runDrafts'
@@ -100,6 +101,7 @@ export function TestRunsPage() {
   const { testCases, updateTestCase } = useTestCases(projectId)
   const { bugs, addBug } = useBugs(projectId)
   const { runs, addRun } = useTestRuns(projectId)
+  const { sharedSteps } = useSharedSteps(projectId)
   const project = projects.find((p) => p.id === projectId)
 
   const { firebaseUser } = useAuth()
@@ -884,7 +886,32 @@ export function TestRunsPage() {
               <h3>Steps</h3>
               {currentCase.steps?.length ? (
                 <ol className="step-list">
-                  {currentCase.steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}
+                  {currentCase.steps.map((step, index) => {
+                    const isSharedRef = typeof step === 'string' && step.startsWith('shared_step_group:')
+                    if (isSharedRef) {
+                      const groupId = step.split(':')[1]
+                      const group = sharedSteps.find((g) => g.id === groupId)
+                      return (
+                        <li key={`${step}-${index}`} className="shared-step-display-item">
+                          <div className="shared-step-display-header">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6, color: 'var(--primary-color, #1a73e8)' }}>
+                              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                            </svg>
+                            <strong>{group ? group.name : 'Deleted Shared Step Group'}</strong>
+                            <span className="shared-badge">Shared block</span>
+                          </div>
+                          {group?.steps && (
+                            <ol className="shared-step-display-list">
+                              {group.steps.map((nested, nIdx) => (
+                                <li key={nIdx}>{nested}</li>
+                              ))}
+                            </ol>
+                          )}
+                        </li>
+                      )
+                    }
+                    return <li key={`${step}-${index}`}>{step}</li>
+                  })}
                 </ol>
               ) : <p className="muted-text">No steps recorded.</p>}
             </div>

@@ -382,3 +382,24 @@ export const saveNotification = (notification) => {
 }
 export const deleteNotification = (id) =>
   set(notificationsKey(), markDeleted(getNotificationsRaw(), id))
+
+// Shared Steps
+export const sharedStepsKey = (projectId) => `${cachePrefix()}sharedsteps_${projectId}`
+export const getSharedStepsRaw = (projectId) => {
+  const key = sharedStepsKey(projectId)
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeRecord)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
+export const getSharedSteps = (projectId) => excludeDeleted(getSharedStepsRaw(projectId))
+export const setSharedSteps = (projectId, sharedSteps) => set(sharedStepsKey(projectId), sharedSteps.map(sanitizeRecord))
+export const saveSharedStep = (projectId, group) => {
+  const list = getSharedStepsRaw(projectId)
+  const idx = list.findIndex((g) => g.id === group.id)
+  const sanitized = sanitizeRecord(group)
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
+  set(sharedStepsKey(projectId), list)
+}
+export const deleteSharedStep = (projectId, id) =>
+  set(sharedStepsKey(projectId), markDeleted(getSharedStepsRaw(projectId), id))
