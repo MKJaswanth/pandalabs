@@ -5406,10 +5406,12 @@ button { font-family: inherit; }
   border-bottom-color: #202124;
 }
 
-.presence-avatar-wrap:hover .presence-tooltip {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translate(-50%, 8px) scale(1);
+@media (hover: hover) {
+  .presence-avatar-wrap:hover .presence-tooltip {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 8px) scale(1);
+  }
 }
 
 .presence-tooltip-name {
@@ -5649,6 +5651,18 @@ button { font-family: inherit; }
   position: absolute;
   top: 18px;
   right: 16px;
+}
+
+@media (max-width: 480px) {
+  .notification-dropdown {
+    position: fixed;
+    top: 68px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: calc(100vw - 24px);
+    z-index: 1001;
+  }
 }
 
 
