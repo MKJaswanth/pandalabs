@@ -75,6 +75,16 @@ export function useBugs(projectId) {
       after: bug,
     })
 
+    if (bug.evidenceLinks?.length > 0) {
+      addActivity({
+        entityType: 'bug',
+        entityId: bug.id,
+        projectId,
+        action: 'update',
+        title: `In ${bug.sourceBugId || bug.id.slice(0, 8).toUpperCase()} evidence link(s) added: ${bug.evidenceLinks.map((l) => l.label || l.url).join(', ')}`,
+      })
+    }
+
     return bug
   }, [projectId, remoteReady])
 
@@ -145,6 +155,33 @@ export function useBugs(projectId) {
       before,
       after: bug,
     })
+
+    if (before) {
+      const beforeLinks = before.evidenceLinks || []
+      const afterLinks = bug.evidenceLinks || []
+      const added = afterLinks.filter((al) => !beforeLinks.some((bl) => bl.id === al.id))
+      const removed = beforeLinks.filter((bl) => !afterLinks.some((al) => al.id === bl.id))
+
+      added.forEach((link) => {
+        addActivity({
+          entityType: 'bug',
+          entityId: bug.id,
+          projectId,
+          action: 'update',
+          title: `In ${bugId} evidence link added: ${link.label || link.url}`,
+        })
+      })
+
+      removed.forEach((link) => {
+        addActivity({
+          entityType: 'bug',
+          entityId: bug.id,
+          projectId,
+          action: 'update',
+          title: `In ${bugId} evidence link removed: ${link.label || link.url}`,
+        })
+      })
+    }
   }, [projectId, remoteReady])
 
   return { bugs, addBug, removeBug, updateBug, refresh }

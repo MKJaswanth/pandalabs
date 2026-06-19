@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { AttachmentField } from '../components/AttachmentField'
+import { EvidenceLinksField } from '../components/EvidenceLinksField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
@@ -71,7 +71,7 @@ export function TestCaseDetailPage() {
       assignee: tc.assignee || '', steps: steps.length ? [...steps] : [''],
       testData: tc.testData || '', expected: tc.expected || '', actual: tc.actual || '',
       status: tc.status, devRemarks: tc.devRemarks || '', qaRemarks: tc.qaRemarks || '',
-      attachments: tc.attachments || [],
+      evidenceLinks: tc.evidenceLinks || [],
     })
     setEditing(true)
   }
@@ -95,7 +95,7 @@ export function TestCaseDetailPage() {
   }
 
   const openLogBug = () => {
-    setBugForm({ title: '', description: '', severity: 'Major', status: 'Open', linkedTestCase: testCaseId, attachments: [] })
+    setBugForm({ title: '', description: '', severity: 'Major', status: 'Open', linkedTestCase: testCaseId, evidenceLinks: [] })
     setShowLogBug(true)
   }
 
@@ -243,6 +243,48 @@ export function TestCaseDetailPage() {
             </div>
           )}
 
+          {/* Evidence links */}
+          {tc.evidenceLinks && tc.evidenceLinks.length > 0 && (
+            <div className="panel detail-main">
+              <div className="detail-title-row">
+                <h2>Evidence links</h2>
+              </div>
+              <div className="attachment-list">
+                {tc.evidenceLinks.map((link) => (
+                  <div key={link.id} className="attachment-item-wrap">
+                    <div className="attachment-item">
+                      <span className="attachment-icon">
+                        {link.isLegacy ? '📎' : '🔗'}
+                      </span>
+                      <div className="attachment-info">
+                        {link.url ? (
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="attachment-name"
+                            style={{ textDecoration: 'underline', color: 'var(--primary-color, #1a73e8)' }}
+                          >
+                            {link.label}
+                          </a>
+                        ) : (
+                          <span className="attachment-name" style={{ color: 'var(--text-muted, #5f6368)' }}>
+                            {link.label}
+                          </span>
+                        )}
+                        <span className="attachment-size">
+                          {link.url ? new URL(link.url).hostname : 'No Link'}
+                          {link.addedBy && ` • Added by ${link.addedBy}`}
+                          {link.addedAt && ` on ${new Date(link.addedAt).toLocaleDateString()}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Linked bugs */}
           <div className="panel">
             <div className="section-header">
@@ -363,10 +405,11 @@ export function TestCaseDetailPage() {
               <label>QA Remarks<input value={form.qaRemarks} onChange={set('qaRemarks')} placeholder="Notes from QA" /></label>
             </div>
             <div>
-              <label>Attachments <span className="hint">(max 1MB per file)</span></label>
-              <AttachmentField
-                attachments={form.attachments || []}
-                onChange={(attachments) => setForm((f) => ({ ...f, attachments }))}
+              <label>Evidence links</label>
+              <EvidenceLinksField
+                evidenceLinks={form.evidenceLinks || []}
+                onChange={(evidenceLinks) => setForm((f) => ({ ...f, evidenceLinks }))}
+                currentUser={user}
               />
             </div>
             <div className="modal-footer">
@@ -403,10 +446,11 @@ export function TestCaseDetailPage() {
               <input value={tc.title} disabled className="input-disabled" />
             </label>
             <div>
-              <label>Attachments <span className="hint">(max 1MB per file)</span></label>
-              <AttachmentField
-                attachments={bugForm.attachments || []}
-                onChange={(attachments) => setBugForm((f) => ({ ...f, attachments }))}
+              <label>Evidence links</label>
+              <EvidenceLinksField
+                evidenceLinks={bugForm.evidenceLinks || []}
+                onChange={(evidenceLinks) => setBugForm((f) => ({ ...f, evidenceLinks }))}
+                currentUser={user}
               />
             </div>
             <div className="modal-footer">

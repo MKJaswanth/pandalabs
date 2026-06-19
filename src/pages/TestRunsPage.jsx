@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { AttachmentField } from '../components/AttachmentField'
+import { EvidenceLinksField } from '../components/EvidenceLinksField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { CheckIcon, BugIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
@@ -509,7 +509,7 @@ export function TestRunsPage() {
       status: 'Open',
       description: currentResult?.actual || '',
       expected: currentCase.expected || '',
-      attachments: [],
+      evidenceLinks: [],
     })
   }
 
@@ -1060,10 +1060,11 @@ export function TestRunsPage() {
               <input value={currentCase.title} disabled className="input-disabled" />
             </label>
             <div>
-              <label>Attachments <span className="hint">(max 1MB per file)</span></label>
-              <AttachmentField
-                attachments={bugForm.attachments || []}
-                onChange={(attachments) => setBugForm((prev) => ({ ...prev, attachments }))}
+              <label>Evidence links</label>
+              <EvidenceLinksField
+                evidenceLinks={bugForm.evidenceLinks || []}
+                onChange={(evidenceLinks) => setBugForm((prev) => ({ ...prev, evidenceLinks }))}
+                currentUser={user}
               />
             </div>
             <div className="modal-footer">

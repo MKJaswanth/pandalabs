@@ -5,6 +5,9 @@ import { useToast } from '../context/useToast'
 import { isFirebaseEnabled } from '../utils/firebase'
 import { suppressSubscriptions } from '../utils/remoteStorage'
 import { addActivity } from '../utils/activity'
+import { clearWorkspaceCache } from '../utils/storage'
+import { getStoragePercent } from '../utils/storageQuota'
+import { useRemoteSync } from '../hooks/useRemoteSync'
 import {
   createWorkspaceBackup,
   downloadWorkspaceBackup,
@@ -29,6 +32,8 @@ function SummaryGrid({ summary }) {
 export function BackupPage() {
   const confirm = useConfirm()
   const toast = useToast()
+  const remoteReady = useRemoteSync()
+  const storagePct = getStoragePercent()
   const fileRef = useRef(null)
   const [parsed, setParsed] = useState(null)
   const [error, setError] = useState('')
@@ -77,6 +82,26 @@ export function BackupPage() {
       title: 'Backup exported',
       details: 'JSON backup file exported/downloaded'
     })
+  }
+
+  const handleClearCache = async () => {
+    const ok = await confirm({
+      title: 'Clear local cache?',
+      message: remoteReady
+        ? 'This clears QA Lab\'s local browser cache to free up space, then reloads and re-syncs everything from the cloud. Your cloud data is not affected. Exporting a backup first is recommended, just in case.'
+        : 'You are NOT connected to cloud sync, so this local cache is your only copy. Export a backup FIRST — clearing will permanently remove local data.',
+      confirmLabel: remoteReady ? 'Clear & re-sync' : 'Clear local data',
+      danger: !remoteReady,
+    })
+    if (!ok) return
+    addActivity({
+      entityType: 'backup',
+      action: 'cache_cleared',
+      title: 'Local cache cleared',
+      details: 'Local browser cache cleared to free space; reloaded from cloud',
+    })
+    clearWorkspaceCache()
+    window.location.reload()
   }
 
   const doRestore = async () => {
@@ -251,6 +276,28 @@ export function BackupPage() {
             </div>
           )}
         </article>
+      </section>
+
+      <section className="panel backup-panel" style={{ marginTop: 18 }}>
+        <div className="section-header">
+          <h2>Free up space</h2>
+        </div>
+        <p className="backup-note">
+          Local cache is {storagePct}% full. QA Lab keeps a copy of your workspace in this browser for speed.
+          {remoteReady
+            ? ' Your data also lives in the cloud, so clearing the local cache is safe — it re-syncs from the cloud on reload.'
+            : ' You are not connected to cloud sync, so export a backup before clearing or you will lose local data.'}
+        </p>
+        <div className="restore-actions">
+          <button className="secondary-button" type="button" onClick={handleExport}>Export backup</button>
+          <button
+            className={remoteReady ? 'secondary-button' : 'danger-button'}
+            type="button"
+            onClick={handleClearCache}
+          >
+            Clear local cache &amp; re-sync
+          </button>
+        </div>
       </section>
     </>
   )

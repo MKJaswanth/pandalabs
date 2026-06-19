@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AttachmentField } from '../components/AttachmentField'
+import { EvidenceLinksField } from '../components/EvidenceLinksField'
 import { XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
 import { Link, useParams } from 'react-router-dom'
 import { Modal } from '../components/Modal'
@@ -46,12 +46,13 @@ const blank = (prefillTcId = '') => ({
   priority: 'Medium', environment: '', build: '', assignedTo: '',
   reportedBy: '', reportedDate: today(),
   fixedInBuild: '', retestStatus: 'Not Retested', devRemarks: '', qaRemarks: '',
-  attachments: [],
+  evidenceLinks: [],
 })
 
 const shortId = (id) => id.slice(0, 8).toUpperCase()
 
 function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submitLabel, history = [], activities = [] }) {
+  const { user } = useUser()
   const set = (key) => (e) => setForm((c) => ({ ...c, [key]: e.target.value }))
 
   return (
@@ -181,10 +182,11 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
       </div>
 
       <div>
-        <label>Attachments <span className="hint">(max 1MB per file)</span></label>
-        <AttachmentField
-          attachments={form.attachments || []}
-          onChange={(attachments) => setForm((c) => ({ ...c, attachments }))}
+        <label>Evidence links</label>
+        <EvidenceLinksField
+          evidenceLinks={form.evidenceLinks || []}
+          onChange={(evidenceLinks) => setForm((c) => ({ ...c, evidenceLinks }))}
+          currentUser={user}
         />
       </div>
 
@@ -281,7 +283,7 @@ export function BugTrackerPage() {
       retestStatus:     bug.retestStatus || 'Not Retested',
       devRemarks:       bug.devRemarks || '',
       qaRemarks:        bug.qaRemarks || '',
-      attachments:      bug.attachments || [],
+      evidenceLinks:    bug.evidenceLinks || [],
     })
   }
 
