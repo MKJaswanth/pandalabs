@@ -53,6 +53,16 @@ export function useTestCases(projectId) {
       after: tc,
     })
 
+    if (tc.evidenceLinks?.length > 0) {
+      addActivity({
+        entityType: 'test_case',
+        entityId: tc.id,
+        projectId,
+        action: 'update',
+        title: `In ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()} evidence link(s) added: ${tc.evidenceLinks.map((l) => l.label || l.url).join(', ')}`,
+      })
+    }
+
     return tc
   }, [projectId, remoteReady])
 
@@ -126,6 +136,33 @@ export function useTestCases(projectId) {
       before,
       after: updated,
     })
+
+    if (before) {
+      const beforeLinks = before.evidenceLinks || []
+      const afterLinks = updated.evidenceLinks || []
+      const added = afterLinks.filter((al) => !beforeLinks.some((bl) => bl.id === al.id))
+      const removed = beforeLinks.filter((bl) => !afterLinks.some((al) => al.id === bl.id))
+
+      added.forEach((link) => {
+        addActivity({
+          entityType: 'test_case',
+          entityId: updated.id,
+          projectId,
+          action: 'update',
+          title: `In ${tcId} evidence link added: ${link.label || link.url}`,
+        })
+      })
+
+      removed.forEach((link) => {
+        addActivity({
+          entityType: 'test_case',
+          entityId: updated.id,
+          projectId,
+          action: 'update',
+          title: `In ${tcId} evidence link removed: ${link.label || link.url}`,
+        })
+      })
+    }
   }, [projectId, remoteReady])
 
   return { testCases, addTestCase, removeTestCase, removeTestCases, updateTestCase, refresh }

@@ -6,6 +6,7 @@ import { useProjects } from '../hooks/useProjects'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
 import { isFirebaseEnabled } from '../utils/firebase'
 import { getStoragePercent, getStorageStatus } from '../utils/storageQuota'
+import { useRemoteSync } from '../hooks/useRemoteSync'
 import { getProjectReportMetrics } from '../utils/reportMetrics'
 import { ChevronDownIcon } from './Icons'
 
@@ -219,18 +220,23 @@ function ProjectOverview({ projectId }) {
 
 function StorageWarningBanner() {
   const [dismissed, setDismissed] = useState(false)
+  const remoteReady = useRemoteSync()
   const status = getStorageStatus()
   if (status === 'ok' || dismissed) return null
   const pct = getStoragePercent()
   const isCritical = status === 'critical'
+  // When cloud sync is active the local cache is disposable — Firestore is the
+  // source of truth — so don't scare the user with "data loss"; point them to
+  // the Backup page where they can free space safely.
+  const message = remoteReady
+    ? `Local cache ${pct}% full — your data is safe in the cloud. Free up space from Backup.`
+    : isCritical
+      ? `Storage critical (${pct}% full) — export a backup immediately to avoid data loss.`
+      : `Storage at ${pct}% — consider exporting a backup soon.`
   return (
-    <div className={`storage-banner storage-banner--${status}`} role="alert">
-      <span>
-        {isCritical
-          ? `Storage critical (${pct}% full) — export a backup immediately to avoid data loss.`
-          : `Storage at ${pct}% — consider exporting a backup soon.`}
-      </span>
-      <NavLink to="/backup" className="storage-banner-link">Export backup</NavLink>
+    <div className={`storage-banner storage-banner--${remoteReady ? 'warning' : status}`} role="alert">
+      <span>{message}</span>
+      <NavLink to="/backup" className="storage-banner-link">{remoteReady ? 'Free up space' : 'Export backup'}</NavLink>
       <button className="storage-banner-dismiss" type="button" onClick={() => setDismissed(true)} aria-label="Dismiss">×</button>
     </div>
   )
