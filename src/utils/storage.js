@@ -53,6 +53,7 @@ export function migrateLegacyCache() {
     }
     localStorage.removeItem(legacyKey)
   })
+  sanitizeAllCache()
 }
 
 // Remove every cached record for the current workspace. Used on logout and by
@@ -92,36 +93,131 @@ export const deleteProject = (id) => {
   localStorage.removeItem(runsKey(id))
 }
 
+export function sanitizeAllCache() {
+  const prefix = cachePrefix()
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(prefix)) continue
+
+    try {
+      if (key.includes('_testcases_')) {
+        const val = get(key)
+        if (Array.isArray(val)) {
+          const sanitized = val.map((tc) => sanitizeRecord(normalizeTestCase(tc)))
+          set(key, sanitized)
+        }
+      } else if (key.includes('_bugs_')) {
+        const val = get(key)
+        if (Array.isArray(val)) {
+          const sanitized = val.map(sanitizeRecord)
+          set(key, sanitized)
+        }
+      } else if (key.includes('_activities')) {
+        const val = get(key)
+        if (Array.isArray(val)) {
+          const sanitized = val.map(sanitizeActivity)
+          set(key, sanitized)
+        }
+      }
+    } catch (err) {
+      console.error(`[storage] Error sanitizing key ${key}:`, err)
+    }
+  }
+}
+
 // Test cases
+export function sanitizeRecord(record) {
+  if (!record) return record
+  const sanitized = { ...record }
+
+  if (!sanitized.evidenceLinks) {
+    sanitized.evidenceLinks = []
+  }
+
+  if (Array.isArray(sanitized.attachments)) {
+    sanitized.attachments.forEach((att) => {
+      if (att.type === 'drive-link') {
+        const url = att.name || att.url || (att.driveId ? `https://drive.google.com/file/d/${att.driveId}/view` : '')
+        if (url && !sanitized.evidenceLinks.some((e) => e.url === url)) {
+          sanitized.evidenceLinks.push({
+            id: att.id || newId(),
+            url: url,
+            label: 'Migrated Google Drive link',
+            addedAt: att.createdAt || new Date().toISOString(),
+            addedBy: 'System',
+          })
+        }
+      } else {
+        const label = `Legacy file: ${att.name} (File content unavailable)`
+        if (!sanitized.evidenceLinks.some((e) => e.label === label)) {
+          sanitized.evidenceLinks.push({
+            id: att.id || newId(),
+            url: '',
+            label: label,
+            addedAt: att.createdAt || new Date().toISOString(),
+            addedBy: 'System',
+            isLegacy: true,
+          })
+        }
+      }
+    })
+    delete sanitized.attachments
+  }
+
+  if (sanitized.attachments) {
+    delete sanitized.attachments
+  }
+
+  return sanitized
+}
+
+export function sanitizeActivity(act) {
+  if (!act || !act.metadata) return act
+  const sanitizedAct = { ...act, metadata: { ...act.metadata } }
+  if (sanitizedAct.metadata.before) {
+    sanitizedAct.metadata.before = sanitizeRecord(sanitizedAct.metadata.before)
+  }
+  if (sanitizedAct.metadata.after) {
+    sanitizedAct.metadata.after = sanitizeRecord(sanitizedAct.metadata.after)
+  }
+  return sanitizedAct
+}
+
 const normalizeTestCase = (tc) => ({ ...tc, status: normalizeTestStatus(tc.status) })
 export const getTestCasesRaw = (projectId) => {
   const key = testCasesKey(projectId)
   const list = get(key) ?? []
-  const normalized = list.map(normalizeTestCase)
+  const normalized = list.map((tc) => sanitizeRecord(normalizeTestCase(tc)))
   if (JSON.stringify(list) !== JSON.stringify(normalized)) set(key, normalized)
   return normalized
 }
 export const getTestCases = (projectId) => excludeDeleted(getTestCasesRaw(projectId))
 export const setTestCases = (projectId, testCases) =>
-  set(testCasesKey(projectId), testCases.map(normalizeTestCase))
+  set(testCasesKey(projectId), testCases.map((tc) => sanitizeRecord(normalizeTestCase(tc))))
 export const saveTestCase = (projectId, tc) => {
   const list = getTestCasesRaw(projectId)
   const idx = list.findIndex((t) => t.id === tc.id)
-  const normalized = normalizeTestCase(tc)
-  idx >= 0 ? (list[idx] = normalized) : list.push(normalized)
+  const sanitized = sanitizeRecord(normalizeTestCase(tc))
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
   set(testCasesKey(projectId), list)
 }
 export const deleteTestCase = (projectId, id) =>
   set(testCasesKey(projectId), markDeleted(getTestCasesRaw(projectId), id))
 
 // Bugs
-export const getBugsRaw = (projectId) => get(bugsKey(projectId)) ?? []
+export const getBugsRaw = (projectId) => {
+  const key = bugsKey(projectId)
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeRecord)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
 export const getBugs = (projectId) => excludeDeleted(getBugsRaw(projectId))
-export const setBugs = (projectId, bugs) => set(bugsKey(projectId), bugs)
+export const setBugs = (projectId, bugs) => set(bugsKey(projectId), bugs.map(sanitizeRecord))
 export const saveBug = (projectId, bug) => {
   const list = getBugsRaw(projectId)
   const idx = list.findIndex((b) => b.id === bug.id)
-  idx >= 0 ? (list[idx] = bug) : list.push(bug)
+  const sanitized = sanitizeRecord(bug)
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
   set(bugsKey(projectId), list)
 }
 export const deleteBug = (projectId, id) =>
@@ -244,17 +340,80 @@ export const deleteTeamMember = (id) =>
 // Activities
 export const ACTIVITY_HISTORY_LIMIT = 1000
 export const activitiesKey = () => `${cachePrefix()}activities`
-export const getActivitiesRaw = () => get(activitiesKey()) ?? []
+export const getActivitiesRaw = () => {
+  const key = activitiesKey()
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeActivity)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
 export const setActivities = (activities) => {
   const pruned = activities.slice(0, ACTIVITY_HISTORY_LIMIT)
-  set(activitiesKey(), pruned)
+  const sanitized = pruned.map(sanitizeActivity)
+  set(activitiesKey(), sanitized)
 }
 export const saveActivity = (activity) => {
   const list = getActivitiesRaw()
   if (!list.some((a) => a.id === activity.id)) {
-    list.push(activity)
+    const sanitized = sanitizeActivity(activity)
+    list.push(sanitized)
     list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    const pruned = list.slice(0, ACTIVITY_HISTORY_LIMIT)
-    set(activitiesKey(), pruned)
+    setActivities(list)
   }
 }
+
+// Notifications
+export const notificationsKey = () => `${cachePrefix()}notifications`
+export const getNotificationsRaw = () => {
+  const key = notificationsKey()
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeRecord)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
+export const getNotifications = () => excludeDeleted(getNotificationsRaw())
+export const setNotifications = (notifications) => set(notificationsKey(), notifications.map(sanitizeRecord))
+export const saveNotification = (notification) => {
+  const list = getNotificationsRaw()
+  const idx = list.findIndex((n) => n.id === notification.id)
+  const sanitized = sanitizeRecord(notification)
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
+  set(notificationsKey(), list)
+}
+export const deleteNotification = (id) =>
+  set(notificationsKey(), markDeleted(getNotificationsRaw(), id))
+
+// Shared Steps
+export const sharedStepsKey = (projectId) => `${cachePrefix()}sharedsteps_${projectId}`
+export const getSharedStepsRaw = (projectId) => {
+  const key = sharedStepsKey(projectId)
+  const list = get(key) ?? []
+  const sanitized = list.map(sanitizeRecord)
+  if (JSON.stringify(list) !== JSON.stringify(sanitized)) set(key, sanitized)
+  return sanitized
+}
+export const getSharedSteps = (projectId) => excludeDeleted(getSharedStepsRaw(projectId))
+export const setSharedSteps = (projectId, sharedSteps) => set(sharedStepsKey(projectId), sharedSteps.map(sanitizeRecord))
+export const saveSharedStep = (projectId, group) => {
+  const list = getSharedStepsRaw(projectId)
+  const idx = list.findIndex((g) => g.id === group.id)
+  const sanitized = sanitizeRecord(group)
+  idx >= 0 ? (list[idx] = sanitized) : list.push(sanitized)
+  set(sharedStepsKey(projectId), list)
+}
+export const deleteSharedStep = (projectId, id) =>
+  set(sharedStepsKey(projectId), markDeleted(getSharedStepsRaw(projectId), id))
+
+// Requirements (link test cases → requirements for coverage)
+export const requirementsKey = (projectId) => `${cachePrefix()}requirements_${projectId}`
+export const getRequirementsRaw = (projectId) => get(requirementsKey(projectId)) ?? []
+export const getRequirements = (projectId) => excludeDeleted(getRequirementsRaw(projectId))
+export const setRequirements = (projectId, requirements) => set(requirementsKey(projectId), requirements)
+export const saveRequirement = (projectId, requirement) => {
+  const list = getRequirementsRaw(projectId)
+  const idx = list.findIndex((r) => r.id === requirement.id)
+  idx >= 0 ? (list[idx] = requirement) : list.push(requirement)
+  set(requirementsKey(projectId), list)
+}
+export const deleteRequirement = (projectId, id) =>
+  set(requirementsKey(projectId), markDeleted(getRequirementsRaw(projectId), id))

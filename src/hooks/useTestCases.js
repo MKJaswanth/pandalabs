@@ -6,9 +6,11 @@ import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
 import { addActivity } from '../utils/activity'
 import { describeTestCaseChanges } from '../utils/history'
+import { useNotifications } from './useNotifications'
 
 export function useTestCases(projectId) {
   const [testCases, setTestCasesState] = useState(() => getTestCases(projectId))
+  const { sendNotification } = useNotifications()
   const remoteReady = useRemoteSync()
 
   const refresh = useCallback(() => setTestCasesState(getTestCases(projectId)), [projectId])
@@ -53,8 +55,29 @@ export function useTestCases(projectId) {
       after: tc,
     })
 
+    if (tc.evidenceLinks?.length > 0) {
+      addActivity({
+        entityType: 'test_case',
+        entityId: tc.id,
+        projectId,
+        action: 'update',
+        title: `In ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()} evidence link(s) added: ${tc.evidenceLinks.map((l) => l.label || l.url).join(', ')}`,
+      })
+    }
+
+    if (tc.assignee) {
+      sendNotification({
+        recipient: tc.assignee,
+        type: 'test_case_assigned',
+        entityId: tc.id,
+        entityName: tc.sourceTcId || tc.id.slice(0, 8).toUpperCase(),
+        message: `${tc.createdByName || 'Someone'} assigned Test Case ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()} to you: ${tc.title}`,
+        projectId,
+      })
+    }
+
     return tc
-  }, [projectId, remoteReady])
+  }, [projectId, remoteReady, sendNotification])
 
   const removeTestCase = useCallback((id) => {
     const before = getTestCases(projectId).find((t) => t.id === id)
@@ -126,7 +149,46 @@ export function useTestCases(projectId) {
       before,
       after: updated,
     })
-  }, [projectId, remoteReady])
+
+    if (before) {
+      const beforeLinks = before.evidenceLinks || []
+      const afterLinks = updated.evidenceLinks || []
+      const added = afterLinks.filter((al) => !beforeLinks.some((bl) => bl.id === al.id))
+      const removed = beforeLinks.filter((bl) => !afterLinks.some((al) => al.id === bl.id))
+
+      added.forEach((link) => {
+        addActivity({
+          entityType: 'test_case',
+          entityId: updated.id,
+          projectId,
+          action: 'update',
+          title: `In ${tcId} evidence link added: ${link.label || link.url}`,
+        })
+      })
+
+      removed.forEach((link) => {
+        addActivity({
+          entityType: 'test_case',
+          entityId: updated.id,
+          projectId,
+          action: 'update',
+          title: `In ${tcId} evidence link removed: ${link.label || link.url}`,
+        })
+      })
+    }
+
+    const isAssigneeChange = before && before.assignee !== updated.assignee
+    if (isAssigneeChange && updated.assignee) {
+      sendNotification({
+        recipient: updated.assignee,
+        type: 'test_case_assigned',
+        entityId: updated.id,
+        entityName: updated.sourceTcId || updated.id.slice(0, 8).toUpperCase(),
+        message: `${updated.updatedByName || 'Someone'} assigned Test Case ${updated.sourceTcId || updated.id.slice(0, 8).toUpperCase()} to you: ${updated.title}`,
+        projectId,
+      })
+    }
+  }, [projectId, remoteReady, sendNotification])
 
   return { testCases, addTestCase, removeTestCase, removeTestCases, updateTestCase, refresh }
 }

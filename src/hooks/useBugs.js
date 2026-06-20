@@ -5,9 +5,11 @@ import { deleteBugRemote, saveBugRemote, saveRunDraftRemote, saveTestRunRemote, 
 import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
 import { addActivity } from '../utils/activity'
+import { useNotifications } from './useNotifications'
 
 export function useBugs(projectId) {
   const [bugs, setBugs] = useState(() => getBugs(projectId))
+  const { sendNotification } = useNotifications()
   const remoteReady = useRemoteSync()
 
   const refresh = useCallback(() => setBugs(getBugs(projectId)), [projectId])
@@ -75,8 +77,29 @@ export function useBugs(projectId) {
       after: bug,
     })
 
+    if (bug.evidenceLinks?.length > 0) {
+      addActivity({
+        entityType: 'bug',
+        entityId: bug.id,
+        projectId,
+        action: 'update',
+        title: `In ${bug.sourceBugId || bug.id.slice(0, 8).toUpperCase()} evidence link(s) added: ${bug.evidenceLinks.map((l) => l.label || l.url).join(', ')}`,
+      })
+    }
+
+    if (bug.assignedTo) {
+      sendNotification({
+        recipient: bug.assignedTo,
+        type: 'bug_assigned',
+        entityId: bug.id,
+        entityName: bug.sourceBugId,
+        message: `${creatorName || 'Someone'} assigned Bug ${bug.sourceBugId} to you: ${bug.title}`,
+        projectId,
+      })
+    }
+
     return bug
-  }, [projectId, remoteReady])
+  }, [projectId, remoteReady, sendNotification])
 
   const removeBug = useCallback((id) => {
     const before = getBugs(projectId).find((b) => b.id === id)
@@ -145,7 +168,46 @@ export function useBugs(projectId) {
       before,
       after: bug,
     })
-  }, [projectId, remoteReady])
+
+    if (before) {
+      const beforeLinks = before.evidenceLinks || []
+      const afterLinks = bug.evidenceLinks || []
+      const added = afterLinks.filter((al) => !beforeLinks.some((bl) => bl.id === al.id))
+      const removed = beforeLinks.filter((bl) => !afterLinks.some((al) => al.id === bl.id))
+
+      added.forEach((link) => {
+        addActivity({
+          entityType: 'bug',
+          entityId: bug.id,
+          projectId,
+          action: 'update',
+          title: `In ${bugId} evidence link added: ${link.label || link.url}`,
+        })
+      })
+
+      removed.forEach((link) => {
+        addActivity({
+          entityType: 'bug',
+          entityId: bug.id,
+          projectId,
+          action: 'update',
+          title: `In ${bugId} evidence link removed: ${link.label || link.url}`,
+        })
+      })
+    }
+
+    if (isAssigneeChange && bug.assignedTo) {
+      const senderName = getCurrentUser() || 'Someone'
+      sendNotification({
+        recipient: bug.assignedTo,
+        type: 'bug_assigned',
+        entityId: bug.id,
+        entityName: bug.sourceBugId || bug.id.slice(0, 8).toUpperCase(),
+        message: `${senderName} assigned Bug ${bug.sourceBugId || bug.id.slice(0, 8).toUpperCase()} to you: ${bug.title}`,
+        projectId,
+      })
+    }
+  }, [projectId, remoteReady, sendNotification])
 
   return { bugs, addBug, removeBug, updateBug, refresh }
 }

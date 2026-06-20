@@ -7,6 +7,7 @@ import { useToast } from '../context/useToast'
 import { useProjects } from '../hooks/useProjects'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { getTestCases } from '../utils/storage'
+import { useUserRole } from '../hooks/useUserRole'
 
 function getPassRate(projectId) {
   const tcs = getTestCases(projectId)
@@ -28,6 +29,7 @@ const blank = { name: '', description: '', memberIds: [] }
 export function ProjectsPage() {
   const { projects, addProject, removeProject } = useProjects()
   const { members } = useTeamMembers()
+  const { isLead } = useUserRole()
   const confirm = useConfirm()
   const toast = useToast()
   const [showAdd, setShowAdd] = useState(false)
@@ -74,9 +76,11 @@ export function ProjectsPage() {
         title="Projects"
         description="Create and manage QA workspaces for each product."
         action={
-          <button className="primary-button" type="button" onClick={() => setShowAdd(true)}>
-            + New project
-          </button>
+          isLead && (
+            <button className="primary-button" type="button" onClick={() => setShowAdd(true)}>
+              + New project
+            </button>
+          )
         }
       />
 
@@ -114,22 +118,24 @@ export function ProjectsPage() {
                   <Link className="text-link" to={`/projects/${project.id}/test-cases`}>
                     Open project →
                   </Link>
-                  <button
-                    className="danger-button"
-                    type="button"
-                    onClick={async () => {
-                      const ok = await confirm({
-                        title: 'Delete project?',
-                        message: `All test cases, bugs, and runs in "${project.name}" will be permanently deleted and cannot be recovered.`,
-                        confirmLabel: 'Delete project',
-                        danger: true,
-                        requireText: project.name,
-                      })
-                      if (ok) removeProject(project.id)
-                    }}
-                  >
-                    Delete
-                  </button>
+                  {isLead && (
+                    <button
+                      className="danger-button"
+                      type="button"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Delete project?',
+                          message: `All test cases, bugs, and runs in "${project.name}" will be permanently deleted and cannot be recovered.`,
+                          confirmLabel: 'Delete project',
+                          danger: true,
+                          requireText: project.name,
+                        })
+                        if (ok) removeProject(project.id)
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </article>
             )

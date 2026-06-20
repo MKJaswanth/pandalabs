@@ -9,6 +9,7 @@ import {
   getTestRuns,
   projectsKey,
   runsKey,
+  sanitizeRecord,
   setCurrentUser,
   setTeamMembers,
   testCasesKey,
@@ -148,8 +149,10 @@ export function restoreWorkspaceBackup(backup, mode) {
     setCurrentUser(incoming.currentUser ?? '')
     incoming.projects.forEach((project) => {
       const data = incoming.projectData[project.id] ?? {}
-      set(testCasesKey(project.id), data.testCases ?? [])
-      set(bugsKey(project.id), data.bugs ?? [])
+      const sanitizedTestCases = (data.testCases ?? []).map(sanitizeRecord)
+      const sanitizedBugs = (data.bugs ?? []).map(sanitizeRecord)
+      set(testCasesKey(project.id), sanitizedTestCases)
+      set(bugsKey(project.id), sanitizedBugs)
       set(runsKey(project.id), data.runs ?? [])
     })
   } else {
@@ -161,8 +164,10 @@ export function restoreWorkspaceBackup(backup, mode) {
 
     incoming.projects.forEach((project) => {
       const data = incoming.projectData[project.id] ?? {}
-      set(testCasesKey(project.id), uniqueById(getTestCases(project.id), data.testCases ?? []))
-      set(bugsKey(project.id), uniqueById(getBugs(project.id), data.bugs ?? []))
+      const sanitizedTestCases = (data.testCases ?? []).map(sanitizeRecord)
+      const sanitizedBugs = (data.bugs ?? []).map(sanitizeRecord)
+      set(testCasesKey(project.id), uniqueById(getTestCases(project.id), sanitizedTestCases))
+      set(bugsKey(project.id), uniqueById(getBugs(project.id), sanitizedBugs))
       set(runsKey(project.id), uniqueById(getTestRuns(project.id), data.runs ?? []))
     })
   }

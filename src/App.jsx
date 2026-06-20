@@ -21,9 +21,11 @@ import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TestCaseDetailPage } from './pages/TestCaseDetailPage'
 import { TestCasesPage } from './pages/TestCasesPage'
+import { RequirementsPage } from './pages/RequirementsPage'
 import { TestRunDetailPage } from './pages/TestRunDetailPage'
 import { TestRunsPage } from './pages/TestRunsPage'
 import { ActivityPage } from './pages/ActivityPage'
+import { WorkspaceSettingsPage } from './pages/WorkspaceSettingsPage'
 import './App.css'
 
 function NamePicker({ onDone }) {
@@ -74,11 +76,14 @@ const appRoutes = (
     <Route path="/backup" element={<BackupPage />} />
     <Route path="/projects/:projectId/test-cases" element={<TestCasesPage />} />
     <Route path="/projects/:projectId/test-cases/:testCaseId" element={<TestCaseDetailPage />} />
+    <Route path="/projects/:projectId/requirements" element={<RequirementsPage />} />
+    <Route path="/projects/:projectId/requirements/:requirementId" element={<RequirementsPage />} />
     <Route path="/projects/:projectId/test-runs" element={<TestRunsPage />} />
     <Route path="/projects/:projectId/test-runs/:runId" element={<TestRunDetailPage />} />
     <Route path="/projects/:projectId/bugs" element={<BugTrackerPage />} />
     <Route path="/projects/:projectId/reports" element={<ProjectReportsPage />} />
     <Route path="/projects/:projectId/settings" element={<SettingsPage />} />
+    <Route path="/workspace/settings" element={<WorkspaceSettingsPage />} />
   </Routes>
 )
 

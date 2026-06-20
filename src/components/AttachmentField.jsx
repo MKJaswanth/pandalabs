@@ -1,7 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { newId } from '../utils/id'
-
-const MAX_FILE_SIZE = 1 * 1024 * 1024 // 1MB in bytes
+import {
+  MAX_FILE_SIZE,
+  canStoreFiles,
+  deleteAttachmentBlob,
+  getAttachmentBlob,
+  putAttachmentBlob,
+} from '../utils/attachments'
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -35,6 +40,9 @@ function extractDriveId(url) {
   return (byPath?.[1] ?? byParam?.[1]) ?? null
 }
 
+// An attachment whose bytes live in IndexedDB (no inline data/url, not a link).
+const isLocalFile = (att) => att.type !== 'drive-link' && !att.data && !att.url
+
 export function AttachmentField({ attachments = [], onChange, disabled = false }) {
   const fileInputRef = useRef(null)
   const [dragActive, setDragActive] = useState(false)
@@ -42,33 +50,72 @@ export function AttachmentField({ attachments = [], onChange, disabled = false }
   const [previewId, setPreviewId] = useState(null)
   const [driveUrl, setDriveUrl] = useState('')
   const [showDriveInput, setShowDriveInput] = useState(false)
+  const [saving, setSaving] = useState(false)
+  // Object URLs for IndexedDB-backed files, plus the set we've finished loading.
+  const [objectUrls, setObjectUrls] = useState({})
+  const [loadedIds, setLoadedIds] = useState(() => new Set())
+
+  // Load blobs for local files into object URLs; revoke them on change/unmount.
+  useEffect(() => {
+    const localFiles = attachments.filter(isLocalFile)
+    let cancelled = false
+    const created = []
+    Promise.all(localFiles.map(async (att) => {
+      const blob = await getAttachmentBlob(att.id)
+      if (!blob) return [att.id, null]
+      const url = URL.createObjectURL(blob)
+      created.push(url)
+      return [att.id, url]
+    })).then((pairs) => {
+      if (cancelled) {
+        created.forEach((u) => URL.revokeObjectURL(u))
+        return
+      }
+      const map = {}
+      const ids = new Set()
+      pairs.forEach(([id, url]) => { ids.add(id); if (url) map[id] = url })
+      setObjectUrls(map)
+      setLoadedIds(ids)
+    })
+    return () => {
+      cancelled = true
+      created.forEach((u) => URL.revokeObjectURL(u))
+    }
+  }, [attachments])
+
+  const srcFor = (att) => att.data || att.url || objectUrls[att.id] || ''
 
   const handleFiles = async (files) => {
     setError('')
-    const newAttachments = []
+    const added = []
+    setSaving(true)
 
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) {
-        setError(`"${file.name}" exceeds the 1MB limit (${formatSize(file.size)}).`)
+        setError(`"${file.name}" exceeds the ${formatSize(MAX_FILE_SIZE)} limit (${formatSize(file.size)}).`)
         continue
       }
 
+      const id = newId()
       try {
-        const data = await fileToBase64(file)
-        newAttachments.push({
-          id: newId(),
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          data,
-        })
-      } catch {
-        setError(`Failed to read "${file.name}".`)
+        if (canStoreFiles()) {
+          // Bytes go to IndexedDB; the synced record stays small (metadata only).
+          await putAttachmentBlob(id, file)
+          added.push({ id, name: file.name, type: file.type, size: file.size })
+        } else {
+          // No IndexedDB available — small Base64 fallback.
+          const data = await fileToBase64(file)
+          added.push({ id, name: file.name, type: file.type, size: file.size, data })
+        }
+      } catch (err) {
+        console.error('[attachments] save failed:', err)
+        setError(`Failed to save "${file.name}".`)
       }
     }
 
-    if (newAttachments.length > 0) {
-      onChange([...attachments, ...newAttachments])
+    setSaving(false)
+    if (added.length > 0) {
+      onChange([...attachments, ...added])
     }
   }
 
@@ -92,9 +139,10 @@ export function AttachmentField({ attachments = [], onChange, disabled = false }
 
   const handleDragLeave = () => setDragActive(false)
 
-  const removeAttachment = (id) => {
-    onChange(attachments.filter((a) => a.id !== id))
-    if (previewId === id) setPreviewId(null)
+  const removeAttachment = (att) => {
+    if (isLocalFile(att)) deleteAttachmentBlob(att.id)
+    onChange(attachments.filter((a) => a.id !== att.id))
+    if (previewId === att.id) setPreviewId(null)
   }
 
   const addDriveLink = () => {
@@ -120,7 +168,10 @@ export function AttachmentField({ attachments = [], onChange, disabled = false }
     <div className="attachment-field">
       {attachments.length > 0 && (
         <div className="attachment-list">
-          {attachments.map((att) => (
+          {attachments.map((att) => {
+            const src = srcFor(att)
+            const missing = isLocalFile(att) && loadedIds.has(att.id) && !src
+            return (
             <div key={att.id} className="attachment-item-wrap">
               <div className="attachment-item">
                 <span className="attachment-icon">{getIconForType(att.type)}</span>
@@ -132,8 +183,11 @@ export function AttachmentField({ attachments = [], onChange, disabled = false }
                   {att.type === 'drive-link' && (
                     <span className="attachment-size">Must be shared publicly to preview</span>
                   )}
+                  {missing && (
+                    <span className="attachment-size">Saved on another device</span>
+                  )}
                 </div>
-                {(att.type === 'drive-link' || (att.type.startsWith('image/') && att.data)) && (
+                {(att.type === 'drive-link' || (att.type?.startsWith('image/') && src)) && (
                   <button
                     type="button"
                     className="attachment-preview-link"
@@ -152,11 +206,22 @@ export function AttachmentField({ attachments = [], onChange, disabled = false }
                     Open
                   </a>
                 )}
+                {att.type !== 'drive-link' && src && (
+                  <a
+                    href={src}
+                    download={att.name}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="attachment-preview-link"
+                  >
+                    Open
+                  </a>
+                )}
                 {!disabled && (
                   <button
                     type="button"
                     className="attachment-remove"
-                    onClick={() => removeAttachment(att.id)}
+                    onClick={() => removeAttachment(att)}
                     aria-label={`Remove ${att.name}`}
                   >
                     ×
@@ -172,15 +237,16 @@ export function AttachmentField({ attachments = [], onChange, disabled = false }
                   sandbox="allow-scripts allow-same-origin allow-popups"
                 />
               )}
-              {previewId === att.id && att.type !== 'drive-link' && att.data && (
+              {previewId === att.id && att.type !== 'drive-link' && src && (
                 <img
-                  src={att.data}
+                  src={src}
                   alt={att.name}
                   className="attachment-preview-img"
                 />
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -194,8 +260,10 @@ export function AttachmentField({ attachments = [], onChange, disabled = false }
             onClick={() => fileInputRef.current?.click()}
           >
             <span className="attachment-dropzone-icon">📎</span>
-            <span className="attachment-dropzone-text">Drop files here or click to upload</span>
-            <span className="attachment-dropzone-hint">Max 1MB per file — images, docs, spreadsheets</span>
+            <span className="attachment-dropzone-text">{saving ? 'Saving…' : 'Drop files here or click to upload'}</span>
+            <span className="attachment-dropzone-hint">
+              Max {formatSize(MAX_FILE_SIZE)} per file — images, docs, spreadsheets
+            </span>
             <input
               ref={fileInputRef}
               type="file"

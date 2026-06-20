@@ -1,17 +1,17 @@
-const STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 // 5 MB typical limit
+const STORAGE_LIMIT_CHARS = 5 * 1024 * 1024 // 5 million characters typical limit
 
-export function getQaStorageBytes() {
+export function getQaStorageChars() {
   let total = 0
   for (const key of Object.keys(localStorage)) {
     if (key.startsWith('qa_')) {
-      total += (localStorage.getItem(key) ?? '').length * 2 // UTF-16 ≈ 2 bytes/char
+      total += (localStorage.getItem(key) ?? '').length
     }
   }
   return total
 }
 
 export function getStoragePercent() {
-  return Math.min(100, Math.round((getQaStorageBytes() / STORAGE_LIMIT_BYTES) * 100))
+  return Math.min(100, Math.round((getQaStorageChars() / STORAGE_LIMIT_CHARS) * 100))
 }
 
 // Returns 'ok' | 'warning' (≥80%) | 'critical' (≥95%)

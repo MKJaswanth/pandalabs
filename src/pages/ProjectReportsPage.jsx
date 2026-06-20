@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
@@ -7,9 +8,12 @@ import { useProjects } from '../hooks/useProjects'
 import { useTestCases } from '../hooks/useTestCases'
 import { useTestRuns } from '../hooks/useTestRuns'
 import { exportBugs, exportTestCases, exportTestRuns } from '../utils/export'
-import { BarChartIcon, DownloadIcon, PrintIcon } from '../components/Icons'
+import { BarChartIcon, DownloadIcon, PrintIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
 import { normalizeTestStatus } from '../utils/status'
 import { getProjectReportMetrics, getActiveBugs, isOpenBug, normalizeBugStatus } from '../utils/reportMetrics'
+
+
+const enc = (value) => encodeURIComponent(value)
 
 export function ProjectReportsPage() {
   const { projectId } = useParams()
@@ -17,6 +21,7 @@ export function ProjectReportsPage() {
   const { testCases } = useTestCases(projectId)
   const { bugs } = useBugs(projectId)
   const { runs } = useTestRuns(projectId)
+  const [runPage, setRunPage] = useState(1)
 
   const project = projects.find((p) => p.id === projectId)
   const projectName = project?.name ?? projectId
@@ -76,13 +81,21 @@ export function ProjectReportsPage() {
   // Trend uses oldest→newest order (left→right)
   const trendRuns = sortedRuns.slice(0, 8).reverse()
 
+  const runPageSize = 3
+  const totalRunPages = Math.max(1, Math.ceil(sortedRuns.length / runPageSize))
+  const currentRunPage = Math.min(runPage, totalRunPages)
+  const runStartIndex = (currentRunPage - 1) * runPageSize
+  const pagedRuns = sortedRuns.slice(runStartIndex, runStartIndex + runPageSize)
+  const runRangeStart = sortedRuns.length ? runStartIndex + 1 : 0
+  const runRangeEnd = Math.min(runStartIndex + runPageSize, sortedRuns.length)
+
   const insights = []
   if (total > 0) {
-    if (blocker > 0) insights.push({ type: 'danger',  title: 'Active Blockers', text: `${blocker} blocker case${blocker !== 1 ? 's' : ''} preventing complete verification. Resolve immediately.` })
-    if (critical > 0) insights.push({ type: 'danger', title: 'Critical Defects', text: `${critical} unresolved Critical severity bug${critical !== 1 ? 's' : ''} require immediate engineering attention.` })
-    if (passRate < 70) insights.push({ type: 'warning', title: 'Low Pass Rate', text: `Pass rate ${passRate}% is below the 70% quality threshold. ${failed} failing case${failed !== 1 ? 's' : ''} need attention.` })
-    if (major > 0) insights.push({ type: 'info', title: 'Major Bugs Open', text: `${major} open Major severity bug${major !== 1 ? 's' : ''} — add to the next sprint backlog.` })
-    if (coverage < 80 && pending > 0) insights.push({ type: 'info', title: 'Low Coverage', text: `${pending} case${pending !== 1 ? 's' : ''} still not executed (${100 - coverage}% untested). Run a test cycle to improve coverage.` })
+    if (blocker > 0) insights.push({ type: 'danger',  title: 'Active Blockers', text: `${blocker} blocker case${blocker !== 1 ? 's' : ''} preventing complete verification. Resolve immediately.`, to: `/projects/${projectId}/test-cases?status=Blocker` })
+    if (critical > 0) insights.push({ type: 'danger', title: 'Critical Defects', text: `${critical} unresolved Critical severity bug${critical !== 1 ? 's' : ''} require immediate engineering attention.`, to: `/projects/${projectId}/bugs?severity=Critical` })
+    if (passRate < 70) insights.push({ type: 'warning', title: 'Low Pass Rate', text: `Pass rate ${passRate}% is below the 70% quality threshold. ${failed} failing case${failed !== 1 ? 's' : ''} need attention.`, to: failed > 0 ? `/projects/${projectId}/test-cases?status=Fail` : `/projects/${projectId}/test-runs` })
+    if (major > 0) insights.push({ type: 'info', title: 'Major Bugs Open', text: `${major} open Major severity bug${major !== 1 ? 's' : ''} - add to the next sprint backlog.`, to: `/projects/${projectId}/bugs?severity=Major` })
+    if (coverage < 80 && pending > 0) insights.push({ type: 'info', title: 'Low Coverage', text: `${pending} case${pending !== 1 ? 's' : ''} still not executed (${100 - coverage}% untested). Run a test cycle to improve coverage.`, to: `/projects/${projectId}/test-cases?status=${enc('Not Executed')}` })
     if (insights.length === 0) insights.push({ type: 'success', title: 'All Systems Nominal', text: 'Blocker-free, healthy pass rate, no critical defects. Ship with confidence.' })
   }
 
@@ -111,34 +124,34 @@ export function ProjectReportsPage() {
 
       {/* ── KPI strip ──────────────────────────────────────────────────────── */}
       <section className="rpt-kpi-strip">
-        <div className="rpt-kpi">
+        <Link to={`/projects/${projectId}/test-cases`} className="rpt-kpi rpt-kpi-link">
           <span>Total cases</span>
           <strong>{total}</strong>
-        </div>
-        <div className="rpt-kpi rpt-kpi--pass">
+        </Link>
+        <Link to={`/projects/${projectId}/test-cases?status=Pass`} className="rpt-kpi rpt-kpi--pass rpt-kpi-link">
           <span>Passed</span>
           <strong>{passed}</strong>
-        </div>
-        <div className="rpt-kpi rpt-kpi--fail">
+        </Link>
+        <Link to={`/projects/${projectId}/test-cases?status=Fail`} className="rpt-kpi rpt-kpi--fail rpt-kpi-link">
           <span>Failed</span>
           <strong>{failed}</strong>
-        </div>
-        <div className="rpt-kpi rpt-kpi--blocker">
+        </Link>
+        <Link to={`/projects/${projectId}/test-cases?status=Blocker`} className="rpt-kpi rpt-kpi--blocker rpt-kpi-link">
           <span>Blockers</span>
           <strong>{blocker}</strong>
-        </div>
-        <div className="rpt-kpi rpt-kpi--bug">
+        </Link>
+        <Link to={`/projects/${projectId}/bugs?status=Open`} className="rpt-kpi rpt-kpi--bug rpt-kpi-link">
           <span>Open bugs</span>
           <strong>{openBugs}</strong>
-        </div>
-        <div className="rpt-kpi rpt-kpi--coverage">
+        </Link>
+        <Link to={`/projects/${projectId}/test-cases?status=${enc('Not Executed')}`} className="rpt-kpi rpt-kpi--coverage rpt-kpi-link">
           <span>Coverage</span>
           <strong>{coverage}%</strong>
-        </div>
-        <div className="rpt-kpi rpt-kpi--runs">
+        </Link>
+        <Link to={`/projects/${projectId}/test-runs`} className="rpt-kpi rpt-kpi--runs rpt-kpi-link">
           <span>Runs</span>
           <strong>{runs.length}</strong>
-        </div>
+        </Link>
       </section>
 
       {/* ── Insights ───────────────────────────────────────────────────────── */}
@@ -146,15 +159,17 @@ export function ProjectReportsPage() {
         <section className="panel insights-panel mb-md">
           <div className="section-header"><h2>Action insights</h2></div>
           <div className="insights-list">
-            {insights.map((ins, i) => (
-              <div key={i} className={`insight-item insight-item--${ins.type}`}>
+            {insights.map((ins, i) => {
+              const InsightTag = ins.to ? Link : 'div'
+              return (
+              <InsightTag key={i} className={`insight-item insight-item--${ins.type} report-action-link`} {...(ins.to ? { to: ins.to } : {})}>
                 <div className="insight-badge-dot" />
                 <div className="insight-content">
                   <strong>{ins.title}</strong>
                   <p>{ins.text}</p>
                 </div>
-              </div>
-            ))}
+              </InsightTag>
+            )})}
           </div>
         </section>
       )}
@@ -186,17 +201,17 @@ export function ProjectReportsPage() {
         <article className="panel chart-panel chart-panel--tall">
           <div className="section-header"><h2>Bugs by severity</h2></div>
           <div className="chart-bars chart-bars--solo">
-            <Bar label="Critical" value={critical} total={activeBugs.length} tone="failed" />
-            <Bar label="Major"    value={major}    total={activeBugs.length} tone="pending" />
-            <Bar label="Minor"    value={minor}    total={activeBugs.length} tone="passed" />
+            <Link to={`/projects/${projectId}/bugs?severity=Critical`} className="chart-link-row"><Bar label="Critical" value={critical} total={activeBugs.length} tone="failed" /></Link>
+            <Link to={`/projects/${projectId}/bugs?severity=Major`} className="chart-link-row"><Bar label="Major" value={major} total={activeBugs.length} tone="pending" /></Link>
+            <Link to={`/projects/${projectId}/bugs?severity=Minor`} className="chart-link-row"><Bar label="Minor" value={minor} total={activeBugs.length} tone="passed" /></Link>
           </div>
           <div className="bug-status-summary">
             {[['Open', 'failed'], ['In review', 'pending'], ['Closed', 'passed']].map(([s, tone]) => (
-              <div key={s} className="bug-status-chip">
+              <Link key={s} to={`/projects/${projectId}/bugs?status=${enc(s)}`} className="bug-status-chip bug-status-chip-link">
                 <span className={`bsc-dot bsc-dot--${tone}`} />
                 <span>{s}</span>
                 <strong>{bugs.filter((b) => normalizeBugStatus(b.status) === s).length}</strong>
-              </div>
+              </Link>
             ))}
           </div>
 
@@ -222,6 +237,99 @@ export function ProjectReportsPage() {
             </>
           )}
         </article>
+      </section>
+
+      {/* ── Test run history ───────────────────────────────────────────────── */}
+      <section className="panel mb-md">
+        <div className="section-header">
+          <h2>Run history</h2>
+          {runs.length > 0 && <StatusPill tone="neutral">{runs.length} run{runs.length !== 1 ? 's' : ''}</StatusPill>}
+        </div>
+        {runs.length === 0 ? (
+          <div className="empty-table-row">No test runs yet. Start a test run to see history here.</div>
+        ) : (
+          <>
+            <div className="table-wrap" style={{ borderBottom: 'none', borderRadius: '10px 10px 0 0' }}>
+              <table className="rpt-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Name</th>
+                    <th>Build</th>
+                    <th className="rpt-run-col-total">Total</th>
+                    <th className="rpt-run-col-pass">Pass</th>
+                    <th className="rpt-run-col-fail">Fail</th>
+                    <th className="rpt-run-col-block">Blocker</th>
+                    <th className="rpt-run-col-skip">Skip</th>
+                    <th className="rpt-run-col-rate">Pass rate</th>
+                    <th>By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRuns.map((run) => {
+                    const rate = run.total ? Math.round((run.passed / run.total) * 100) : 0
+                    const tone = rate >= 70 ? 'passed' : rate >= 50 ? 'pending' : 'failed'
+                    return (
+                      <tr key={run.id}>
+                        <td>{new Date(run.completedAt || run.date).toLocaleString()}</td>
+                        <td>
+                          <Link to={`/projects/${projectId}/test-runs/${run.id}`} className="text-link">
+                            {run.name || 'Test run'}
+                          </Link>
+                        </td>
+                        <td>{run.build || '—'}</td>
+                        <td>{run.total}</td>
+                        <td className="metric-passed">{run.passed}</td>
+                        <td className="metric-failed">{run.failed}</td>
+                        <td>{run.blocker ?? 0}</td>
+                        <td>{run.skipped ?? 0}</td>
+                        <td>
+                          <div className="progress-cell">
+                            <span className={`status-text--${tone}`}>{rate}%</span>
+                            <div className="progress-track">
+                              <span style={{
+                                width: `${rate}%`,
+                                background: tone === 'passed' ? 'var(--success)' : tone === 'pending' ? 'var(--warning)' : 'var(--danger)',
+                              }} />
+                            </div>
+                          </div>
+                        </td>
+                        <td>{run.executedBy || '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {runs.length > 0 && (
+              <div className="table-pagination" aria-label="Run history pagination" style={{ borderTop: '1px solid var(--border)', padding: '10px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="pagination-summary">{runRangeStart}-{runRangeEnd} of {sortedRuns.length}</span>
+                <div className="pagination-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button 
+                    className="secondary-button icon-button" 
+                    type="button" 
+                    aria-label="Previous runs page" 
+                    disabled={currentRunPage === 1} 
+                    onClick={() => setRunPage(Math.max(1, currentRunPage - 1))}
+                  >
+                    <ChevronLeftIcon width={14} height={14} />
+                  </button>
+                  <span className="page-indicator">{currentRunPage} / {totalRunPages}</span>
+                  <button 
+                    className="secondary-button icon-button" 
+                    type="button" 
+                    aria-label="Next runs page" 
+                    disabled={currentRunPage === totalRunPages} 
+                    onClick={() => setRunPage(Math.min(totalRunPages, currentRunPage + 1))}
+                  >
+                    <ChevronRightIcon width={14} height={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       {/* ── Module breakdown ───────────────────────────────────────────────── */}
@@ -251,11 +359,11 @@ export function ProjectReportsPage() {
                   const healthLabel = m.blocker > 0 ? 'Blocker' : problems > 0 ? 'Failing' : m.passRate >= 70 ? 'Good' : 'Review'
                   return (
                     <tr key={m.module}>
-                      <td><strong>{m.module}</strong></td>
-                      <td>{m.total}</td>
-                      <td className="metric-passed">{m.passed}</td>
-                      <td className={problems > 0 ? 'metric-failed' : ''}>{problems || '—'}</td>
-                      <td className={m.openBugs > 0 ? 'metric-failed' : ''}>{m.openBugs || '—'}</td>
+                      <td><Link className="text-link" to={`/projects/${projectId}/test-cases?module=${enc(m.module)}`}><strong>{m.module}</strong></Link></td>
+                      <td><Link className="text-link" to={`/projects/${projectId}/test-cases?module=${enc(m.module)}`}>{m.total}</Link></td>
+                      <td><Link className="text-link metric-passed" to={`/projects/${projectId}/test-cases?module=${enc(m.module)}&status=Pass`}>{m.passed}</Link></td>
+                      <td><Link className={`text-link ${problems > 0 ? 'metric-failed' : ''}`} to={`/projects/${projectId}/test-cases?module=${enc(m.module)}&status=${m.blocker > 0 ? 'Blocker' : 'Fail'}`}>{problems || '—'}</Link></td>
+                      <td><Link className={`text-link ${m.openBugs > 0 ? 'metric-failed' : ''}`} to={`/projects/${projectId}/bugs?module=${enc(m.module)}&status=Open`}>{m.openBugs || '—'}</Link></td>
                       <td>
                         <div className="progress-cell">
                           <span>{m.passRate}%</span>
@@ -276,70 +384,6 @@ export function ProjectReportsPage() {
           </div>
         </section>
       )}
-
-      {/* ── Test run history ───────────────────────────────────────────────── */}
-      <section className="panel">
-        <div className="section-header">
-          <h2>Run history</h2>
-          {runs.length > 0 && <StatusPill tone="neutral">{runs.length} run{runs.length !== 1 ? 's' : ''}</StatusPill>}
-        </div>
-        {runs.length === 0 ? (
-          <div className="empty-table-row">No test runs yet. Start a test run to see history here.</div>
-        ) : (
-          <div className="table-wrap">
-            <table className="rpt-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Name</th>
-                  <th>Build</th>
-                  <th className="rpt-run-col-total">Total</th>
-                  <th className="rpt-run-col-pass">Pass</th>
-                  <th className="rpt-run-col-fail">Fail</th>
-                  <th className="rpt-run-col-block">Blocker</th>
-                  <th className="rpt-run-col-skip">Skip</th>
-                  <th className="rpt-run-col-rate">Pass rate</th>
-                  <th>By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRuns.map((run) => {
-                  const rate = run.total ? Math.round((run.passed / run.total) * 100) : 0
-                  const tone = rate >= 70 ? 'passed' : rate >= 50 ? 'pending' : 'failed'
-                  return (
-                    <tr key={run.id}>
-                      <td>{new Date(run.completedAt || run.date).toLocaleString()}</td>
-                      <td>
-                        <Link to={`/projects/${projectId}/test-runs/${run.id}`} className="text-link">
-                          {run.name || 'Test run'}
-                        </Link>
-                      </td>
-                      <td>{run.build || '—'}</td>
-                      <td>{run.total}</td>
-                      <td className="metric-passed">{run.passed}</td>
-                      <td className="metric-failed">{run.failed}</td>
-                      <td>{run.blocker ?? 0}</td>
-                      <td>{run.skipped ?? 0}</td>
-                      <td>
-                        <div className="progress-cell">
-                          <span className={`status-text--${tone}`}>{rate}%</span>
-                          <div className="progress-track">
-                            <span style={{
-                              width: `${rate}%`,
-                              background: tone === 'passed' ? 'var(--success)' : tone === 'pending' ? 'var(--warning)' : 'var(--danger)',
-                            }} />
-                          </div>
-                        </div>
-                      </td>
-                      <td>{run.executedBy || '—'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </>
   )
 }

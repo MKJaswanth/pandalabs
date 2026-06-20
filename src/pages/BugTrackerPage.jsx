@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { AttachmentField } from '../components/AttachmentField'
+import { EvidenceLinksField } from '../components/EvidenceLinksField'
 import { XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
-import { Link, useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { useConfirm } from '../context/useConfirm'
@@ -16,6 +16,7 @@ import { newId } from '../utils/id'
 import { downloadBugTemplate, getReporterName } from '../utils/export'
 import { BugBulkUploadModal } from '../components/BugBulkUploadModal'
 import { DownloadIcon, UploadIcon } from '../components/Icons'
+import { useUserRole } from '../hooks/useUserRole'
 
 function SortTh({ col, label, active, dir, onSort }) {
   const isActive = active === col
@@ -46,16 +47,18 @@ const blank = (prefillTcId = '') => ({
   priority: 'Medium', environment: '', build: '', assignedTo: '',
   reportedBy: '', reportedDate: today(),
   fixedInBuild: '', retestStatus: 'Not Retested', devRemarks: '', qaRemarks: '',
-  attachments: [],
+  evidenceLinks: [],
 })
 
 const shortId = (id) => id.slice(0, 8).toUpperCase()
 
-function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submitLabel, history = [], activities = [] }) {
+function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submitLabel, history = [], activities = [], disabled = false }) {
+  const { user } = useUser()
   const set = (key) => (e) => setForm((c) => ({ ...c, [key]: e.target.value }))
 
   return (
     <form className="modal-form" onSubmit={onSubmit}>
+      <fieldset disabled={disabled} style={{ border: 'none', padding: 0, margin: 0, display: 'contents' }}>
       <label>
         Title <span className="required">*</span>
         <input autoFocus value={form.title} onChange={set('title')} placeholder="Describe the defect" />
@@ -181,10 +184,11 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
       </div>
 
       <div>
-        <label>Attachments <span className="hint">(max 1MB per file)</span></label>
-        <AttachmentField
-          attachments={form.attachments || []}
-          onChange={(attachments) => setForm((c) => ({ ...c, attachments }))}
+        <label>Evidence links</label>
+        <EvidenceLinksField
+          evidenceLinks={form.evidenceLinks || []}
+          onChange={(evidenceLinks) => setForm((c) => ({ ...c, evidenceLinks }))}
+          currentUser={user}
         />
       </div>
 
@@ -222,9 +226,11 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
         </div>
       )}
 
+      </fieldset>
+
       <div className="modal-footer">
-        <button type="button" className="secondary-button" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="primary-button">{submitLabel}</button>
+        <button type="button" className="secondary-button" onClick={onCancel}>{disabled ? 'Close' : 'Cancel'}</button>
+        {!disabled && <button type="submit" className="primary-button">{submitLabel}</button>}
       </div>
     </form>
   )
@@ -232,7 +238,9 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
 
 export function BugTrackerPage() {
   const { projectId } = useParams()
+  const [searchParams] = useSearchParams()
   const { user } = useUser()
+  const { isTester, isViewer } = useUserRole()
   const { bugs, addBug, removeBug, updateBug } = useBugs(projectId)
   const { testCases } = useTestCases(projectId)
   const { members } = useTeamMembers()
@@ -244,11 +252,11 @@ export function BugTrackerPage() {
   const [showImport, setShowImport] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(blank)
-  const [search, setSearch] = useState('')
-  const [fSeverity, setFSeverity] = useState('')
-  const [fStatus, setFStatus] = useState('')
-  const [fModule, setFModule] = useState('')
-  const [fAssignee, setFAssignee] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('search') || '')
+  const [fSeverity, setFSeverity] = useState(() => searchParams.get('severity') || '')
+  const [fStatus, setFStatus] = useState(() => searchParams.get('status') || '')
+  const [fModule, setFModule] = useState(() => searchParams.get('module') || '')
+  const [fAssignee, setFAssignee] = useState(() => searchParams.get('assignee') || '')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const { sorted: sortedBugs, sortKey: bugSortKey, sortDir: bugSortDir, toggle: bugToggle } = useSortable(bugs)
@@ -281,7 +289,7 @@ export function BugTrackerPage() {
       retestStatus:     bug.retestStatus || 'Not Retested',
       devRemarks:       bug.devRemarks || '',
       qaRemarks:        bug.qaRemarks || '',
-      attachments:      bug.attachments || [],
+      evidenceLinks:    bug.evidenceLinks || [],
     })
   }
 
@@ -356,7 +364,6 @@ export function BugTrackerPage() {
     updateBug(updated)
   }
 
-  const tcTitle = (id) => testCases.find((tc) => tc.id === id)?.title
 
   const bugModules = [...new Set(bugs.map((b) => b.module).filter(Boolean))]
   const bugAssignees = [...new Set(bugs.map((b) => b.assignedTo).filter(Boolean))]
@@ -390,10 +397,14 @@ export function BugTrackerPage() {
             <button className="secondary-button" type="button" onClick={downloadBugTemplate}>
               <DownloadIcon width={14} height={14} /> Bug template
             </button>
-            <button className="secondary-button" type="button" onClick={() => setShowImport(true)}>
-              <UploadIcon width={14} height={14} /> Import bugs
-            </button>
-            <button className="primary-button" type="button" onClick={openAdd}>+ Log bug</button>
+            {!isViewer && (
+              <>
+                <button className="secondary-button" type="button" onClick={() => setShowImport(true)}>
+                  <UploadIcon width={14} height={14} /> Import bugs
+                </button>
+                <button className="primary-button" type="button" onClick={openAdd}>+ Log bug</button>
+              </>
+            )}
           </div>
         }
       />
@@ -450,7 +461,6 @@ export function BugTrackerPage() {
                 <col className="bug-col-severity" />
                 <col className="bug-col-priority" />
                 <col className="bug-col-status" />
-                <col className="bug-col-linked" />
                 <col className="bug-col-actions" />
               </colgroup>
               <thead>
@@ -461,7 +471,6 @@ export function BugTrackerPage() {
                   <SortTh col="severity" label="Severity" active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
                   <SortTh col="priority" label="Priority" active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
                   <SortTh col="status"   label="Status"   active={bugSortKey} dir={bugSortDir} onSort={bugToggle} />
-                  <th>Linked TC</th>
                   <th></th>
                 </tr>
               </thead>
@@ -484,6 +493,7 @@ export function BugTrackerPage() {
                         className={`inline-select status-select status-select--${severityTone[bug.severity] || 'neutral'}`}
                         value={bug.severity}
                         aria-label="Bug severity"
+                        disabled={isViewer}
                         onChange={(e) => handleInlineSeverityChange(bug, e.target.value)}
                       >
                         {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
@@ -494,6 +504,7 @@ export function BugTrackerPage() {
                         className={`inline-select status-select ${priorityClass[bug.priority ?? 'Medium'] ?? 'priority-med'}`}
                         value={bug.priority ?? 'Medium'}
                         aria-label="Bug priority"
+                        disabled={isViewer}
                         onChange={(e) => handleInlinePriorityChange(bug, e.target.value)}
                       >
                         {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
@@ -504,33 +515,26 @@ export function BugTrackerPage() {
                         className={`inline-select status-select status-select--${bugStatusTone[bug.status] || 'neutral'}`}
                         value={bug.status}
                         aria-label="Bug status"
+                        disabled={isViewer}
                         onChange={(e) => handleInlineStatusChange(bug, e.target.value)}
                       >
                         {STATUSES.map((s) => <option key={s}>{s}</option>)}
                       </select>
                     </td>
-                    <td className="linked-tc-cell">
-                      {bug.linkedTestCase ? (
-                        <Link
-                          className="linked-tc-title"
-                          to={`/projects/${projectId}/test-cases/${bug.linkedTestCase}`}
-                        >
-                          {tcTitle(bug.linkedTestCase) ?? 'Open test case'}
-                        </Link>
-                      ) : '—'}
-                    </td>
                     <td>
-                      <button
-                        className="row-delete"
-                        type="button"
-                        aria-label="Delete bug"
-                        onClick={async () => {
-                          const ok = await confirm({ title: 'Delete bug?', message: `"${bug.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
-                          if (ok) { removeBug(bug.id); toast.success('Bug deleted') }
-                        }}
-                      >
-                        <XIcon width={12} height={12} />
-                      </button>
+                      {!isTester && (
+                        <button
+                          className="row-delete"
+                          type="button"
+                          aria-label="Delete bug"
+                          onClick={async () => {
+                            const ok = await confirm({ title: 'Delete bug?', message: `"${bug.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
+                            if (ok) { removeBug(bug.id); toast.success('Bug deleted') }
+                          }}
+                        >
+                          <XIcon width={12} height={12} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -548,6 +552,7 @@ export function BugTrackerPage() {
                       className={`inline-select status-select status-select--${severityTone[bug.severity] || 'neutral'}`}
                       value={bug.severity}
                       aria-label="Bug severity"
+                      disabled={isViewer}
                       onChange={(e) => handleInlineSeverityChange(bug, e.target.value)}
                     >
                       {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
@@ -556,6 +561,7 @@ export function BugTrackerPage() {
                       className="inline-select status-select status-select--neutral"
                       value={bug.status}
                       aria-label="Bug status"
+                      disabled={isViewer}
                       onChange={(e) => handleInlineStatusChange(bug, e.target.value)}
                     >
                       {STATUSES.map((s) => <option key={s}>{s}</option>)}
@@ -578,6 +584,7 @@ export function BugTrackerPage() {
                         className={`inline-select status-select ${priorityClass[bug.priority ?? 'Medium'] ?? 'priority-med'}`}
                         value={bug.priority ?? 'Medium'}
                         aria-label="Bug priority"
+                        disabled={isViewer}
                         onChange={(e) => handleInlinePriorityChange(bug, e.target.value)}
                       >
                         {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
@@ -587,19 +594,6 @@ export function BugTrackerPage() {
                   <div>
                     <span>Module:</span>
                     <strong>{bug.module || '—'}</strong>
-                  </div>
-                  <div>
-                    <span>Linked TC:</span>
-                    <strong>
-                      {bug.linkedTestCase ? (
-                        <Link
-                          className="linked-tc-title"
-                          to={`/projects/${projectId}/test-cases/${bug.linkedTestCase}`}
-                        >
-                          {tcTitle(bug.linkedTestCase) ?? 'Open test case'}
-                        </Link>
-                      ) : '—'}
-                    </strong>
                   </div>
                   {(bug.environment || bug.build) && (
                     <div>
@@ -612,13 +606,15 @@ export function BugTrackerPage() {
                   <button className="secondary-button mobile-card-action-btn" type="button" onClick={() => openEdit(bug)}>
                     Open & Edit
                   </button>
-                  <button className="danger-button mobile-card-action-btn" type="button"
-                    onClick={async () => {
-                      const ok = await confirm({ title: 'Delete bug?', message: `"${bug.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
-                      if (ok) { removeBug(bug.id); toast.success('Bug deleted') }
-                    }}>
-                    Delete
-                  </button>
+                  {!isTester && (
+                    <button className="danger-button mobile-card-action-btn" type="button"
+                      onClick={async () => {
+                        const ok = await confirm({ title: 'Delete bug?', message: `"${bug.title}" will be permanently removed.`, confirmLabel: 'Delete', danger: true })
+                        if (ok) { removeBug(bug.id); toast.success('Bug deleted') }
+                      }}>
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -664,7 +660,7 @@ export function BugTrackerPage() {
       )}
 
       {editing && (
-        <Modal title="Edit bug" onClose={() => setEditing(null)}>
+        <Modal title={isViewer ? 'Bug details' : 'Edit bug'} onClose={() => setEditing(null)}>
           <BugForm
             form={form}
             setForm={setForm}
@@ -675,6 +671,7 @@ export function BugTrackerPage() {
             onCancel={() => setEditing(null)}
             onSubmit={handleEdit}
             submitLabel="Save changes"
+            disabled={isViewer}
           />
         </Modal>
       )}
