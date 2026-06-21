@@ -794,7 +794,7 @@ export function TestRunsPage() {
                     <th>Title</th>
                     <th>Module</th>
                     <th>Priority</th>
-                    <th>Status</th>
+                    <th style={{ textAlign: 'center' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -813,7 +813,7 @@ export function TestRunsPage() {
                       <td>{tc.title}</td>
                       <td>{tc.module || '-'}</td>
                       <td>{tc.priority}</td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         <select
                           className={`inline-select status-select status-select--${STATUS_TONE[tc.status] ?? 'pending'}`}
                           value={tc.status}

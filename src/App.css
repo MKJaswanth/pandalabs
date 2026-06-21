@@ -256,16 +256,11 @@
 .content {
   flex: 1;
   min-width: 0;
-  padding: 32px 0 48px;
+  padding: 32px 32px 48px 32px;
 }
 
 .project-sidebar + .content {
   padding-left: 32px;
-}
-
-/* Content inner wrapper for max-width and consistent horizontal alignment */
-.content > * {
-  padding-right: 32px;
 }
 
 /* ── 3. BUTTONS (UNIFIED) ──────────────────────────────────────────────── */
@@ -426,6 +421,7 @@ a:focus-visible,
   gap: 8px;
   min-width: 0;
 }
+.page-header .page-actions { align-self: center; }
 
 .page-actions .page-actions-row {
   margin-left: auto;
@@ -773,13 +769,13 @@ tbody tr:hover {
 /* Row action triggers */
 .row-actions {
   width: 54px;
-  text-align: right;
+  text-align: center;
 }
 
 .row-actions-inner {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -1022,8 +1018,8 @@ tbody tr:hover {
 }
 /* Percentage widths summing to 100% so the table fits the viewport (no
    horizontal scroll); long content wraps inside its cell. */
-.bug-col-id       { width: 9%; }
-.bug-col-title    { width: 28%; }
+.bug-col-id       { width: 12%; }
+.bug-col-title    { width: 25%; }
 .bug-col-module   { width: 14%; }
 .bug-col-severity { width: 14%; }
 .bug-col-priority { width: 14%; }
@@ -1036,6 +1032,7 @@ tbody tr:hover {
   word-break: normal;
   vertical-align: middle;
 }
+.bug-table td.mono.tc-id { white-space: nowrap; }
 .bug-table .priority-badge { white-space: nowrap; }
 .bug-table .inline-select,
 .bug-table .status-select {
@@ -3091,8 +3088,8 @@ button { font-family: inherit; }
 .drop-zone-icon { font-size: 28px; }
 .drop-zone-text { font-size: 14px; color: var(--text-strong); }
 .drop-zone-hint { font-size: 12px; color: var(--text-muted); }
-.bulk-template-hint { font-size: 12px; color: var(--text-muted); line-height: 1.5; flex: 1; margin: 0; }
-.bulk-template-row { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }
+.bulk-template-hint { font-size: 12px; color: var(--text-muted); line-height: 1.6; flex: 1; margin: 0; }
+.bulk-template-row { display: flex; align-items: center; gap: 16px; justify-content: space-between; padding: 10px 14px; background: var(--soft-bg); border: 1px solid var(--border); border-radius: var(--radius); }
 .bulk-file-bar { display: flex; align-items: center; justify-content: space-between; background: var(--soft-bg); border-radius: 6px; padding: 8px 12px; font-size: 13px; }
 .bulk-filename { font-weight: 600; }
 .bulk-counts { display: flex; align-items: center; gap: 8px; font-size: 13px; }
@@ -3919,7 +3916,7 @@ button { font-family: inherit; }
 .req-stat-label { flex: 1; color: var(--text-muted); min-width: 70px; }
 .req-stat strong { font-weight: 700; color: var(--text-strong); min-width: 20px; text-align: right; }
 .req-table { table-layout: fixed; width: 100%; }
-.req-col-key      { width: 9%; }
+.req-col-key      { width: 12%; }
 .req-col-title    { width: 28%; }
 .req-col-priority { width: 13%; }
 .req-col-coverage { width: 15%; }
@@ -3931,8 +3928,12 @@ button { font-family: inherit; }
 .req-table th, .req-table td { text-align: left; }
 .req-col-priority, .req-col-bar, .req-col-status, .req-col-actions { text-align: center; }
 .req-col-priority .inline-select { margin: 0 auto; }
-.req-col-key-cell { padding-left: 16px; }
+.req-col-key-cell { padding-left: 20px; white-space: nowrap; }
 .req-col-title-cell { padding-left: 4px; }
+.req-table th:first-child { padding-left: 20px; }
+.req-table th:last-child, .req-table td:last-child { padding-right: 20px; }
+.rpt-table th:first-child, .rpt-table td:first-child { padding-left: 20px; }
+.rpt-table th:last-child, .rpt-table td:last-child { padding-right: 20px; }
 .req-table .inline-select,
 .req-table .status-select {
   width: 100%;
@@ -4108,9 +4109,11 @@ button { font-family: inherit; }
   border-radius: var(--radius);
   padding: 4px;
 }
-.req-tc-option {
+/* Use label.req-tc-option to beat the .modal-form label { display: block } rule (same specificity, later in source wins) */
+label.req-tc-option {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 8px;
   padding: 6px 8px;
   margin: 0;
@@ -4122,9 +4125,9 @@ button { font-family: inherit; }
   color: var(--text-strong);
   cursor: pointer;
 }
-.req-tc-option:hover { background: var(--soft-bg); }
-.req-tc-id { flex: none; font-size: 10.5px; color: var(--text-soft); padding: 0 4px 0 0; }
-.req-tc-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+label.req-tc-option:hover { background: var(--soft-bg); }
+.req-tc-id { flex: none; width: 82px; min-width: 82px; font-size: 10.5px; color: var(--text-soft); padding: 0 6px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req-tc-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Firebase user photo */
 .user-pill-photo,
@@ -7268,7 +7271,7 @@ button { font-family: inherit; }
 }
 
 .tag-chip-list {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
   gap: 5px;
   margin-top: 5px;

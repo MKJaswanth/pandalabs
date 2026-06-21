@@ -11,16 +11,16 @@ import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useBugs } from '../hooks/useBugs'
 import { useProjects } from '../hooks/useProjects'
 import { useUser } from '../context/UserContext'
 import { useSharedSteps } from '../hooks/useSharedSteps'
 import { useUserRole } from '../hooks/useUserRole'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
-import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
+import { STATUS_TONE, TEST_STATUSES, normalizeTestStatus } from '../utils/status'
 import { exportTestCases } from '../utils/export'
 import { addActivity } from '../utils/activity'
-import { getTestCaseDisplayId, testCaseMatchesSearch } from '../utils/testCaseSearch'
-import { sharedStepMatchesSearch } from '../utils/entitySearch'
+import { newId } from '../utils/id'
 
 function SortTh({ col, label, active, dir, onSort }) {
   const isActive = active === col
@@ -34,6 +34,10 @@ function SortTh({ col, label, active, dir, onSort }) {
 
 const PRIORITIES = ['High', 'Med', 'Low']
 const PAGE_SIZES = [10, 25, 100]
+const SEVERITIES = ['Critical', 'Major', 'Minor']
+const BUG_STATUSES = ['Open', 'In review', 'Closed']
+
+const getTestCaseDisplayId = (tc) => tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()
 
 const blankForm = () => ({
   title: '', module: '', scenario: '', preconditions: '', priority: 'Med',
@@ -45,6 +49,7 @@ export function TestCasesPage() {
   const { projectId } = useParams()
   const [searchParams] = useSearchParams()
   const { testCases, addTestCase, updateTestCase, removeTestCase, removeTestCases } = useTestCases(projectId)
+  const { addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
   const { projects } = useProjects()
   const { user } = useUser()
@@ -69,6 +74,9 @@ export function TestCasesPage() {
   const [bulkStatus, setBulkStatus] = useState('Pass')
 
   const [activeTab, setActiveTab] = useState('cases') // 'cases' | 'shared-steps'
+  const [showBugModal, setShowBugModal] = useState(false)
+  const [bugForm, setBugForm] = useState(null)
+  const [failedTcId, setFailedTcId] = useState(null)
   const { sharedSteps, addSharedStep, updateSharedStep, removeSharedStep } = useSharedSteps(projectId)
   const [showSharedModal, setShowSharedModal] = useState(false)
   const [editSharedGroup, setEditSharedGroup] = useState(null)
@@ -147,6 +155,57 @@ export function TestCasesPage() {
     setter(e.target.value)
     setPage(1)
   }
+
+  // When a TC status changes to Fail, prompt to log a bug (pre-filled, linked to the TC).
+  const handleTcStatusChange = (tc, newStatus) => {
+    const updated = { ...tc, status: newStatus, updatedAt: new Date().toISOString(), updatedBy: user }
+    const changes = describeTestCaseChanges(tc, updated)
+    updateTestCase(changes.length
+      ? withHistory(updated, historyEntry('update', user, changes.join(', ')))
+      : updated)
+
+    // If changing TO Fail, offer to log a bug.
+    if (normalizeTestStatus(newStatus) === 'Fail') {
+      setBugForm({
+        title: `Failed: ${tc.title}`,
+        description: '',
+        severity: 'Major',
+        status: 'Open',
+        linkedTestCase: tc.id,
+        linkedRequirementId: '',
+        module: tc.module || '',
+        evidenceLinks: [],
+        tags: [],
+      })
+      setFailedTcId(tc.id)
+      setShowBugModal(true)
+    }
+  }
+
+  const handleBugSubmit = (e) => {
+    e.preventDefault()
+    if (!bugForm.title.trim()) return
+    const initialHistory = {
+      id: newId(),
+      type: 'created',
+      user,
+      timestamp: new Date().toISOString(),
+      details: 'Bug created (from failed test case)',
+    }
+    addBug({ ...bugForm, history: [initialHistory] })
+    setShowBugModal(false)
+    setBugForm(null)
+    setFailedTcId(null)
+    toast.success('Bug logged')
+  }
+
+  const handleBugCancel = () => {
+    setShowBugModal(false)
+    setBugForm(null)
+    setFailedTcId(null)
+  }
+
+  const setBug = (k) => (e) => setBugForm((f) => ({ ...f, [k]: e.target.value }))
   const clearFilters = () => { setSearch(''); setFPriority(''); setFStatus(''); setFModule(''); setFAssignee(''); setFTag(''); setPage(1) }
   const activeFilterCount = [search, fPriority, fStatus, fModule, fAssignee, fTag].filter(Boolean).length
   const filterByTag = (tag) => { setFTag((cur) => (cur === tag ? '' : tag)); setPage(1) }
@@ -262,7 +321,7 @@ export function TestCasesPage() {
   const allTags = [...new Set(testCases.flatMap((t) => t.tags || []))].sort((a, b) => a.localeCompare(b))
 
   const visible = sortedCases.filter((tc) => {
-    if (!testCaseMatchesSearch(tc, search)) return false
+    if (search && !tc.title.toLowerCase().includes(search.toLowerCase())) return false
     if (fPriority && tc.priority !== fPriority) return false
     if (fStatus && tc.status !== fStatus) return false
     if (fModule && tc.module !== fModule) return false
@@ -276,7 +335,7 @@ export function TestCasesPage() {
   const pagedCases = visible.slice(startIndex, startIndex + pageSize)
   const rangeStart = visible.length === 0 ? 0 : startIndex + 1
   const rangeEnd = Math.min(startIndex + pageSize, visible.length)
-  const visibleSharedSteps = sharedSteps.filter((group) => sharedStepMatchesSearch(group, sharedSearch))
+  const visibleSharedSteps = sharedSteps.filter((group) => !sharedSearch || group.name.toLowerCase().includes(sharedSearch.toLowerCase()))
 
   return (
     <>
@@ -452,7 +511,7 @@ export function TestCasesPage() {
                     <th>
                       <SortTh col="status" label="Status" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -495,10 +554,7 @@ export function TestCasesPage() {
                           value={tc.status}
                           aria-label="Status"
                           disabled={!isLead}
-                          onChange={(e) => updateTestCase(withHistory(
-                            { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
-                            historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
-                          ))}
+                          onChange={(e) => handleTcStatusChange(tc, e.target.value)}
                         >
                           {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
                         </select>
@@ -556,10 +612,7 @@ export function TestCasesPage() {
                         value={tc.status}
                         aria-label="Status"
                         disabled={!isLead}
-                        onChange={(e) => updateTestCase(withHistory(
-                          { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
-                          historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
-                        ))}
+                        onChange={(e) => handleTcStatusChange(tc, e.target.value)}
                       >
                         {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
                       </select>
@@ -668,7 +721,7 @@ export function TestCasesPage() {
                   <th>Name</th>
                   <th>Description</th>
                   <th>Steps count</th>
-                  <th style={{ width: 100, textAlign: 'right' }}>Actions</th>
+                  <th style={{ width: 100, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -874,6 +927,57 @@ export function TestCasesPage() {
             <div className="modal-footer">
               <button type="button" className="secondary-button" onClick={close}>Cancel</button>
               <button type="submit" className="primary-button">{editTc ? 'Save changes' : 'Add test case'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {showBugModal && bugForm && (
+        <Modal title="Log bug from failed test case" onClose={handleBugCancel}>
+          <form className="modal-form" onSubmit={handleBugSubmit}>
+            <label>
+              Title <span className="required">*</span>
+              <input autoFocus value={bugForm.title} onChange={setBug('title')} />
+            </label>
+            <label>
+              Description
+              <textarea value={bugForm.description} onChange={setBug('description')} rows={3} placeholder="Steps to reproduce, environment, notes…" />
+            </label>
+            <div className="form-row">
+              <label>
+                Severity
+                <select value={bugForm.severity} onChange={setBug('severity')}>
+                  {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </label>
+              <label>
+                Status
+                <select value={bugForm.status} onChange={setBug('status')}>
+                  {BUG_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </label>
+            </div>
+            <label>
+              Module
+              <input value={bugForm.module} onChange={setBug('module')} placeholder="e.g. Auth, Checkout" />
+            </label>
+            <label>
+              Linked test case
+              <input value={failedTcId ? testCases.find(tc => tc.id === failedTcId)?.title || 'Loading...' : ''} disabled className="input-disabled" />
+            </label>
+            <label>
+              Tags
+              <TagInput
+                id="bug-from-tc-tags"
+                value={bugForm.tags || []}
+                onChange={(tags) => setBugForm((f) => ({ ...f, tags }))}
+                suggestions={[]}
+                placeholder="e.g. regression, flaky…"
+              />
+            </label>
+            <div className="modal-footer">
+              <button type="button" className="secondary-button" onClick={handleBugCancel}>Skip</button>
+              <button type="submit" className="primary-button">Log bug</button>
             </div>
           </form>
         </Modal>
