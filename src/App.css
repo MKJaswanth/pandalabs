@@ -256,11 +256,16 @@
 .content {
   flex: 1;
   min-width: 0;
-  padding: 20px 0 48px;
+  padding: 32px 0 48px;
 }
 
 .project-sidebar + .content {
-  padding-left: 20px;
+  padding-left: 32px;
+}
+
+/* Content inner wrapper for max-width and consistent horizontal alignment */
+.content > * {
+  padding-right: 32px;
 }
 
 /* ── 3. BUTTONS (UNIFIED) ──────────────────────────────────────────────── */
@@ -386,29 +391,32 @@ a:focus-visible,
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 18px;
+  gap: 24px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
 }
 
 .page-header-copy {
   min-width: 0;
+  flex: 1;
 }
 
 .page-header h1 {
   margin: 0;
   color: var(--text-strong);
-  font-size: 24px;
-  font-weight: 750;
-  letter-spacing: -0.025em;
-  line-height: 1.2;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  word-break: break-word;
 }
 
 .page-header p {
-  margin: 5px 0 0;
+  margin: 8px 0 0;
   color: var(--text-muted);
   font-size: 13px;
-  line-height: 1.45;
-  max-width: 680px;
+  line-height: 1.5;
+  max-width: 600px;
 }
 
 .page-actions {
@@ -506,7 +514,7 @@ select:focus {
 .form-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 
 /* ── 6. COMPACT PROJECT OVERVIEW BAR (REPLACED CARD) ────────────────────── */
@@ -515,12 +523,12 @@ select:focus {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding: 12px 16px;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: #fafbfc;
   box-shadow: var(--shadow-sm);
 }
 
@@ -608,27 +616,29 @@ select:focus {
   background: var(--surface);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 14px;
-  background: #fbfcfc;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #fafbfc;
   border-bottom: 1px solid var(--border);
 }
 
 .toolbar input[type="search"] {
   max-width: 240px;
+  flex-shrink: 0;
 }
 
 .toolbar select,
 .toolbar input[type="date"] {
   width: auto;
-  min-width: 110px;
+  min-width: 120px;
+  flex-shrink: 0;
 }
 .toolbar .filter-active {
   border-color: var(--accent);
@@ -660,34 +670,50 @@ select:focus {
   color: var(--accent);
 }
 
-.bulk-action-bar {
+.bulk-action-bar,
+.bulk-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 14px 16px;
   background: var(--accent-soft);
   border-bottom: 1px solid var(--border);
 }
 
-.bulk-action-bar span {
+.bulk-bar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.bulk-action-bar span,
+.bulk-bar > span:first-child {
   font-size: 12px;
   font-weight: 600;
   color: var(--accent);
 }
 
-.bulk-action-bar select {
+.bulk-action-bar select,
+.bulk-actions select {
   width: auto;
-  height: 38px;
+  height: 36px;
   min-width: 120px;
   font-size: 13px;
   border-radius: 6px;
   padding: 0 28px 0 10px;
 }
 
-.bulk-action-bar button {
-  height: 38px;
-  min-height: 38px;
+.bulk-action-bar button,
+.bulk-actions button {
+  height: 36px;
+  min-height: 36px;
   padding: 0 16px;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .table-wrap {
@@ -709,10 +735,10 @@ th {
   background: #f8f9fa;
   color: var(--text-soft);
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 9px 12px;
+  letter-spacing: 0.05em;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
   user-select: none;
@@ -721,7 +747,7 @@ th {
 }
 
 td {
-  padding: 10px 12px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   color: var(--text-strong);
   vertical-align: middle;
@@ -831,10 +857,12 @@ tbody tr:hover {
 /* Empty states */
 .empty-table-row,
 .panel-empty-text {
-  padding: 32px;
+  padding: 48px 32px;
   text-align: center;
   color: var(--text-soft);
-  font-size: 13.5px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: #fafbfc;
 }
 
 /* ── 8. BADGES, PILLS, & TEXT TRUNCATION ───────────────────────────────── */
@@ -944,14 +972,33 @@ tbody tr:hover {
 /* Percentage widths summing to 100% so the table always fits the viewport
    (no horizontal scroll); long content wraps inside its cell. */
 .tc-col-check    { width: 3%; }
-.tc-col-id       { width: 8%; }
-.tc-col-title    { width: 25%; }
+.tc-col-id       { width: 11%; }
+.tc-col-title    { width: 22%; }
 .tc-col-module   { width: 12%; }
 .tc-col-priority { width: 10%; }
 .tc-col-assignee { width: 10%; }
 .tc-col-status   { width: 14%; }
 .tc-col-actions  { width: 18%; }
 
+/* Checkbox cells — centered, no wrap, proper alignment */
+.tc-table .checkbox-th,
+.tc-table .checkbox-td {
+  padding: 12px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+.tc-table .checkbox-th input[type="checkbox"],
+.tc-table .checkbox-td input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+/* ID cell — monospace, no wrap */
+.tc-table td.mono {
+  white-space: nowrap;
+}
 /* Wrap normal text consistently; only break genuinely long unbroken strings. */
 .tc-table td {
   white-space: normal;
@@ -1784,13 +1831,14 @@ a.process-chip:hover { border-color: var(--accent); color: var(--accent); }
 .tab-navigation {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--soft-bg);
+  gap: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   width: fit-content;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--border);
 }
 
 .tab-btn {
@@ -1798,10 +1846,11 @@ a.process-chip:hover { border-color: var(--accent); color: var(--accent); }
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 16px;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  height: 42px;
+  padding: 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
   color: var(--text-muted);
   font: inherit;
@@ -1810,18 +1859,20 @@ a.process-chip:hover { border-color: var(--accent); color: var(--accent); }
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s;
+  margin-bottom: -2px;
 }
 
 .tab-btn:hover:not(.tab-btn--active) {
-  background: rgba(255,255,255,0.6);
+  background: transparent;
   color: var(--text-strong);
 }
 
 .tab-btn--active {
-  border-color: var(--border-strong);
-  background: var(--surface);
-  color: var(--text-strong);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: none;
+  border-bottom: 2px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  box-shadow: none;
 }
 
 /* Test Plans page card view (mobile) */
