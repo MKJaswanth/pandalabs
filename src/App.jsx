@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Layout } from './components/Layout'
@@ -12,6 +12,7 @@ import { UserContext } from './context/UserContext'
 import { useCurrentUser } from './hooks/useCurrentUser'
 import { isFirebaseEnabled } from './utils/firebase'
 import { AuthPage } from './pages/AuthPage'
+import { LandingPage } from './pages/LandingPage'
 import { BackupPage } from './pages/BackupPage'
 import { BugTrackerPage } from './pages/BugTrackerPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -24,6 +25,7 @@ import { TestCasesPage } from './pages/TestCasesPage'
 import { RequirementsPage } from './pages/RequirementsPage'
 import { TestRunDetailPage } from './pages/TestRunDetailPage'
 import { TestRunsPage } from './pages/TestRunsPage'
+import { TestPlansPage } from './pages/TestPlansPage'
 import { ActivityPage } from './pages/ActivityPage'
 import { WorkspaceSettingsPage } from './pages/WorkspaceSettingsPage'
 import './App.css'
@@ -80,16 +82,38 @@ const appRoutes = (
     <Route path="/projects/:projectId/requirements/:requirementId" element={<RequirementsPage />} />
     <Route path="/projects/:projectId/test-runs" element={<TestRunsPage />} />
     <Route path="/projects/:projectId/test-runs/:runId" element={<TestRunDetailPage />} />
+    <Route path="/projects/:projectId/test-plans" element={<TestPlansPage />} />
     <Route path="/projects/:projectId/bugs" element={<BugTrackerPage />} />
     <Route path="/projects/:projectId/reports" element={<ProjectReportsPage />} />
     <Route path="/projects/:projectId/settings" element={<SettingsPage />} />
     <Route path="/workspace/settings" element={<WorkspaceSettingsPage />} />
+    <Route path="*" element={<Navigate to="/dashboard" replace />} />
   </Routes>
 )
 
 function AppShell() {
   const { user, updateUser } = useCurrentUser()
   const { firebaseUser, loading } = useAuth()
+  const [showAuth, setShowAuth] = useState(false)
+
+  // Track if user was previously signed out
+  const wasSignedOutRef = useRef(false)
+
+  useEffect(() => {
+    const isSignedOut = (isFirebaseEnabled && firebaseUser === null) || (!isFirebaseEnabled && user === null)
+    if (isSignedOut) {
+      wasSignedOutRef.current = true
+    }
+  }, [firebaseUser, user])
+
+  // Redirect to dashboard upon successful sign-in
+  useEffect(() => {
+    const isAuthenticated = (isFirebaseEnabled ? !!firebaseUser : true) && !!user
+    if (isAuthenticated && wasSignedOutRef.current) {
+      window.location.hash = '#/dashboard'
+      wasSignedOutRef.current = false
+    }
+  }, [firebaseUser, user])
 
   // Auto-populate display name from Firebase profile on first sign-in
   useEffect(() => {
@@ -130,9 +154,11 @@ function AppShell() {
     )
   }
 
-  // Firebase enabled but not signed in → show auth page
+  // Firebase enabled but not signed in → show landing page first, then auth on demand
   if (isFirebaseEnabled && !firebaseUser) {
-    return <AuthPage />
+    return showAuth
+      ? <AuthPage onBack={() => setShowAuth(false)} />
+      : <LandingPage onGetStarted={() => setShowAuth(true)} />
   }
 
   // localStorage mode: no name set → show name picker

@@ -27,6 +27,7 @@ const projectNav = [
   { label: 'Test cases', path: 'test-cases', icon: 'cases' },
   { label: 'Requirements', path: 'requirements', icon: 'requirements' },
   { label: 'Test runs', path: 'test-runs', icon: 'runs' },
+  { label: 'Test plans', path: 'test-plans', icon: 'plans' },
   { label: 'Bug tracker', path: 'bugs', icon: 'bug' },
   { label: 'Reports', path: 'reports', icon: 'reports' },
   { label: 'Settings', path: 'settings', icon: 'settings' },
@@ -43,6 +44,7 @@ function Icon({ name }) {
     cases: <><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="m3 6 .8.8L5.5 5" /><path d="m3 12 .8.8 1.7-1.8" /><path d="m3 18 .8.8 1.7-1.8" /></>,
     requirements: <><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /><path d="m9 11 3 3L22 4" /></>,
     runs: <><path d="M5 4v16" /><path d="m5 12 6-4v8Z" /><path d="M15 8h4" /><path d="M15 16h4" /></>,
+    plans: <><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="M9 12h6" /><path d="M9 16h6" /></>,
     bug: <><path d="M8 8a4 4 0 0 1 8 0v8a4 4 0 0 1-8 0Z" /><path d="M3 13h5" /><path d="M16 13h5" /><path d="M4 20l4-3" /><path d="m16 17 4 3" /><path d="M9 4 7 2" /><path d="m15 4 2-2" /></>,
     settings: <><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-1.9.3 1.7 1.7 0 0 0-.8 1.6V22H9.1v-.2a1.7 1.7 0 0 0-.8-1.6 1.7 1.7 0 0 0-1.9-.3l-.2.1-2-3.4.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 1.9-.3A1.7 1.7 0 0 0 9.1 2V2h5.8v.2a1.7 1.7 0 0 0 .8 1.6 1.7 1.7 0 0 0 1.9.3l.2-.1 2 3.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></>,
   }
@@ -94,7 +96,15 @@ function UserPill() {
             {role}
           </span>
         )}
-        <ChevronDownIcon width={12} height={12} />
+        <ChevronDownIcon
+          width={12}
+          height={12}
+          style={{
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.2s ease',
+            marginRight: '4px',
+          }}
+        />
       </button>
 
       {open && (
@@ -432,12 +442,28 @@ function StorageWarningBanner() {
   )
 }
 
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const html = document.documentElement
+    const originalScrollBehavior = html.style.scrollBehavior
+    html.style.scrollBehavior = 'auto'
+    window.scrollTo(0, 0)
+    // Force a reflow to ensure the instant scroll is painted immediately before re-enabling smooth scroll
+    html.offsetHeight
+    html.style.scrollBehavior = originalScrollBehavior
+  }, [pathname])
+  return null
+}
+
 export function Layout({ children }) {
   const { pathname } = useLocation()
   const match = pathname.match(/^\/projects\/([^/]+)/)
   const projectId = match?.[1]
 
   return (
+    <>
+    <ScrollToTop />
     <div className="app-shell">
       <StorageWarningBanner />
       <header className="topbar">
@@ -474,5 +500,6 @@ export function Layout({ children }) {
         </main>
       </div>
     </div>
+    </>
   )
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { useProjects } from '../hooks/useProjects'
+import { useWorkspaceData } from '../hooks/useWorkspaceData'
 import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
 import { normalizeTestStatus } from '../utils/status'
 import { getGlobalReportMetrics, isOpenBug } from '../utils/reportMetrics'
@@ -24,6 +25,9 @@ const enc = (value) => encodeURIComponent(value)
 export function ReportsPage() {
   const { projects } = useProjects()
   const [nowTs] = useState(() => Date.now())
+  // Warm the cache for every project so global readiness numbers are correct
+  // without first opening each project; re-renders as data lands.
+  useWorkspaceData(projects)
 
   const {
     rows,

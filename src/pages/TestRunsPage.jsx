@@ -3,7 +3,7 @@ import { Link, useParams, useLocation } from 'react-router-dom'
 import { EvidenceLinksField } from '../components/EvidenceLinksField'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { CheckIcon, BugIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
+import { CheckIcon, BugIcon, ChevronLeftIcon, ChevronRightIcon, UploadIcon } from '../components/Icons'
 import { useUser } from '../context/UserContext'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
@@ -12,6 +12,7 @@ import { useBugs } from '../hooks/useBugs'
 import { useProjects } from '../hooks/useProjects'
 import { useTestCases } from '../hooks/useTestCases'
 import { useTestRuns } from '../hooks/useTestRuns'
+import { useTestPlans } from '../hooks/useTestPlans'
 import { useSharedSteps } from '../hooks/useSharedSteps'
 import { historyEntry, withHistory } from '../utils/history'
 import { newId } from '../utils/id'
@@ -19,6 +20,8 @@ import { clearRunDraft, getRunDraft, saveRunDraft } from '../utils/runDrafts'
 import { STATUS_TONE, TEST_STATUSES, summarizeStatuses } from '../utils/status'
 import { isFirebaseEnabled, auth } from '../utils/firebase'
 import { saveRunDraftRemote, deleteRunDraftRemote, logActivityRemote } from '../utils/remoteStorage'
+import { JUnitUploadModal } from '../components/JUnitUploadModal'
+import { testRunMatchesSearch } from '../utils/entitySearch'
 
 const BUG_STATUSES = ['Open', 'In review', 'Closed']
 const SEVERITIES = ['Critical', 'Major', 'Minor']
@@ -100,7 +103,8 @@ export function TestRunsPage() {
   const { projects } = useProjects()
   const { testCases, updateTestCase } = useTestCases(projectId)
   const { bugs, addBug } = useBugs(projectId)
-  const { runs, addRun } = useTestRuns(projectId)
+  const { runs, addRun, refresh } = useTestRuns(projectId)
+  const { plans, linkRunToPlan } = useTestPlans(projectId)
   const { sharedSteps } = useSharedSteps(projectId)
   const project = projects.find((p) => p.id === projectId)
 
@@ -146,9 +150,13 @@ export function TestRunsPage() {
   const [mode, setMode] = useState('setup')
   const [runName, setRunName] = useState('')
   const [build, setBuild] = useState('')
+  const [selectedTestPlanId, setSelectedTestPlanId] = useState('')
+  const [linkedRequirementId, setLinkedRequirementId] = useState('')
+  const [selectedFilterPlanId, setSelectedFilterPlanId] = useState('')
   const [selectedIds, setSelectedIds] = useState(() => testCases.map((tc) => tc.id))
   const [currentIndex, setCurrentIndex] = useState(0)
   const activeCaseRef = useRef(null)
+  const [showJunitModal, setShowJunitModal] = useState(false)
 
   const location = useLocation()
 
@@ -157,12 +165,14 @@ export function TestRunsPage() {
     const runCasesParam = searchParams.get('runCases')
     const reqKeyParam = searchParams.get('reqKey')
     const reqTitleParam = searchParams.get('reqTitle')
+    const reqIdParam = searchParams.get('reqId')
 
     if (runCasesParam) {
       const caseIds = runCasesParam.split(',').filter(Boolean)
       
       setTimeout(() => {
         setSelectedIds(caseIds)
+        if (reqIdParam) setLinkedRequirementId(reqIdParam)
         if (reqKeyParam && reqTitleParam) {
           setRunName(`Run for ${decodeURIComponent(reqKeyParam)}: ${decodeURIComponent(reqTitleParam)}`)
         } else if (reqKeyParam) {
@@ -233,29 +243,13 @@ export function TestRunsPage() {
   }))
   const liveSummary = summarizeStatuses(resultItems)
   // Recent runs, newest first, searchable and paginated. currentPage is clamped
-  // so filtering or deletion that shrinks the list snaps back into range.
   const orderedRuns = [...runs].reverse()
-  const runSearchQuery = runSearch.trim().toLowerCase()
-  const filteredRuns = runSearchQuery
-    ? orderedRuns.filter((run) => {
-        const runDate = run.completedAt || run.date
-        const searchable = [
-          run.name,
-          run.build,
-          run.executedBy,
-          runDate,
-          runDate ? new Date(runDate).toLocaleString() : '',
-          run.total,
-          run.passed,
-          run.failed,
-          run.blocker,
-        ]
-          .filter((value) => value !== undefined && value !== null)
-          .join(' ')
-          .toLowerCase()
-        return searchable.includes(runSearchQuery)
-      })
-    : orderedRuns
+  const filteredRuns = orderedRuns.filter((run) => {
+    if (selectedFilterPlanId && run.testPlanId !== selectedFilterPlanId) {
+      return false
+    }
+    return testRunMatchesSearch(run, runSearch)
+  })
   const totalRuns = filteredRuns.length
   const runsTotalPages = Math.max(1, Math.ceil(totalRuns / runsPageSize))
   const runsCurrentPage = Math.min(runsPage, runsTotalPages)
@@ -334,6 +328,8 @@ export function TestRunsPage() {
       projectId,
       runName,
       build,
+      testPlanId: selectedTestPlanId || '',
+      linkedRequirementId: linkedRequirementId || '',
       selectedIds,
       currentIndex: 0,
       results: initial,
@@ -384,6 +380,8 @@ export function TestRunsPage() {
       projectId,
       runName,
       build,
+      testPlanId: selectedTestPlanId || '',
+      linkedRequirementId: linkedRequirementId || '',
       selectedIds: ids,
       currentIndex: 0,
       results: initial,
@@ -459,6 +457,7 @@ export function TestRunsPage() {
         severity: tc.status === 'Blocker' ? 'Critical' : 'Major',
         status: 'Open',
         linkedTestCase: tc.testCaseId,
+        linkedRequirementId: linkedRequirementId || '',
         module: tc.module || '',
         priority: tc.priority || '',
         reportedBy: auth?.currentUser?.uid || '',
@@ -484,6 +483,8 @@ export function TestRunsPage() {
       executedBy: user ?? '',
       startedAt: startedAt ?? new Date().toISOString(),
       completedAt: new Date().toISOString(),
+      testPlanId: selectedTestPlanId || '',
+      linkedRequirementId: linkedRequirementId || '',
       cases: executed,
       bugsLogged: totalBugsLogged,
       linkedBugIds: allLinkedBugIds,
@@ -491,6 +492,10 @@ export function TestRunsPage() {
       passRate,
       ...summary,
     })
+
+    if (selectedTestPlanId) {
+      linkRunToPlan(selectedTestPlanId, run.id)
+    }
 
     clearRunDraft(projectId)
     if (isFirebaseEnabled && firebaseUser && currentDraftId) {
@@ -550,6 +555,7 @@ export function TestRunsPage() {
     if (!bugForm?.title.trim()) return
     const bug = addBug({
       ...bugForm,
+      linkedRequirementId: linkedRequirementId || bugForm.linkedRequirementId || '',
       reportedBy: auth?.currentUser?.uid || '',
       reportedByName: user || '',
       history: [historyEntry('created', user, 'Bug created during test run execution')],
@@ -584,6 +590,8 @@ export function TestRunsPage() {
     const safeIndex = Math.min(activeDraft.currentIndex ?? 0, validIds.length - 1)
     setRunName(activeDraft.runName ?? '')
     setBuild(activeDraft.build ?? '')
+    setSelectedTestPlanId(activeDraft.testPlanId ?? '')
+    setLinkedRequirementId(activeDraft.linkedRequirementId ?? '')
     setSelectedIds(validIds)
     setCurrentIndex(safeIndex)
     setResults(activeDraft.results ?? {})
@@ -633,6 +641,8 @@ export function TestRunsPage() {
       projectId,
       runName,
       build,
+      testPlanId: selectedTestPlanId || '',
+      linkedRequirementId: linkedRequirementId || '',
       selectedIds,
       currentIndex,
       results,
@@ -649,7 +659,7 @@ export function TestRunsPage() {
     if (isFirebaseEnabled && firebaseUser) {
       saveRunDraftRemote(projectId, draftData)
     }
-  }, [mode, projectId, currentDraftId, runName, build, selectedIds, currentIndex, results, bugsLogged, loggedBugCaseIds, loggedBugIds, startedAt, firebaseUser, user])
+  }, [mode, projectId, currentDraftId, runName, build, selectedTestPlanId, linkedRequirementId, selectedIds, currentIndex, results, bugsLogged, loggedBugCaseIds, loggedBugIds, startedAt, firebaseUser, user])
 
   // ── Keyboard shortcuts during execution ────────────────────────────────────
   useEffect(() => {
@@ -701,6 +711,17 @@ export function TestRunsPage() {
       <PageHeader
         title="Test runs"
         description="Select test cases, execute them, and save run history for release reporting."
+        action={
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setShowJunitModal(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <UploadIcon width={14} height={14} />
+            Import JUnit XML
+          </button>
+        }
       />
 
       {mode === 'setup' && activeDraft && (
@@ -731,6 +752,15 @@ export function TestRunsPage() {
               Build / version
               <input value={build} onChange={(e) => setBuild(e.target.value)} placeholder="v1.8.0, staging-42..." />
             </label>
+            {plans.length > 0 && (
+              <label>
+                Test plan <span className="hint">(optional)</span>
+                <select value={selectedTestPlanId} onChange={(e) => setSelectedTestPlanId(e.target.value)}>
+                  <option value="">None</option>
+                  {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+            )}
           </div>
 
           <div className="section-header">
@@ -1179,7 +1209,7 @@ export function TestRunsPage() {
             <h2>Recent runs</h2>
             <span className="section-count">{totalRuns} of {orderedRuns.length}</span>
           </div>
-          <div className="toolbar run-history-toolbar">
+          <div className="toolbar run-history-toolbar" style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="search"
               value={runSearch}
@@ -1189,8 +1219,25 @@ export function TestRunsPage() {
               }}
               placeholder="Search runs..."
               aria-label="Search test runs"
+              style={{ flex: '1 1 200px' }}
             />
-            <span className="toolbar-info">
+            {plans.length > 0 && (
+              <select
+                value={selectedFilterPlanId}
+                onChange={(e) => {
+                  setSelectedFilterPlanId(e.target.value)
+                  setRunsPage(1)
+                }}
+                aria-label="Filter runs by test plan"
+                className={selectedFilterPlanId ? 'filter-active' : ''}
+              >
+                <option value="">All test plans</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+            <span className="toolbar-info" style={{ flex: '1 1 100%' }}>
               Search by run name, build, owner, date, or result count.
             </span>
           </div>
@@ -1227,9 +1274,17 @@ export function TestRunsPage() {
                   <tr key={run.id}>
                     <td>{new Date(run.completedAt || run.date).toLocaleString()}</td>
                     <td>
-                      <Link to={`/projects/${projectId}/test-runs/${run.id}`} className="text-link">
-                        {run.name || 'Test run'}
-                      </Link>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <Link to={`/projects/${projectId}/test-runs/${run.id}`} className="text-link">
+                          {run.name || 'Test run'}
+                        </Link>
+                        {run.testPlanId && (
+                          <span className="text-muted" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--primary-color, #2563eb)' }}></span>
+                            Plan: {plans.find(p => p.id === run.testPlanId)?.name || 'Unknown'}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="rl-num">{run.total}</td>
                     <td className="rl-num metric-passed">{run.passed}</td>
@@ -1261,6 +1316,11 @@ export function TestRunsPage() {
                   </div>
                   <h3 className="mobile-card-title">
                     <Link to={`/projects/${projectId}/test-runs/${run.id}`}>{run.name || 'Test run'}</Link>
+                    {run.testPlanId && (
+                      <span className="text-muted" style={{ fontSize: '11px', display: 'block', marginTop: '4px', fontWeight: 'normal' }}>
+                        Plan: {plans.find(p => p.id === run.testPlanId)?.name || 'Unknown'}
+                      </span>
+                    )}
                   </h3>
                   <div className="mobile-card-details">
                     <div>
@@ -1329,6 +1389,22 @@ export function TestRunsPage() {
             </div>
           </div>
         </section>
+      )}
+      {showJunitModal && (
+        <JUnitUploadModal
+          isOpen={showJunitModal}
+          onClose={() => {
+            setShowJunitModal(false)
+            refresh()
+          }}
+          projectId={projectId}
+          testCases={testCases}
+          addRun={addRun}
+          updateTestCase={updateTestCase}
+          addBug={addBug}
+          plans={plans}
+          user={user}
+        />
       )}
     </>
   )

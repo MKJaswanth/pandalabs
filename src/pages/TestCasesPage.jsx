@@ -4,6 +4,7 @@ import { useSortable } from '../hooks/useSortable'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { BulkUploadModal } from '../components/BulkUploadModal'
 import { Modal } from '../components/Modal'
+import { TagInput, TagList } from '../components/TagInput'
 import { PageHeader } from '../components/PageHeader'
 import { StepBuilder } from '../components/StepBuilder'
 import { useConfirm } from '../context/useConfirm'
@@ -18,6 +19,8 @@ import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/his
 import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
 import { exportTestCases } from '../utils/export'
 import { addActivity } from '../utils/activity'
+import { getTestCaseDisplayId, testCaseMatchesSearch } from '../utils/testCaseSearch'
+import { sharedStepMatchesSearch } from '../utils/entitySearch'
 
 function SortTh({ col, label, active, dir, onSort }) {
   const isActive = active === col
@@ -35,7 +38,7 @@ const PAGE_SIZES = [10, 25, 100]
 const blankForm = () => ({
   title: '', module: '', scenario: '', preconditions: '', priority: 'Med',
   assignee: '', steps: [''], testData: '', expected: '', actual: '',
-  status: 'Not Executed', devRemarks: '', qaRemarks: '',
+  status: 'Not Executed', devRemarks: '', qaRemarks: '', tags: [],
 })
 
 export function TestCasesPage() {
@@ -59,6 +62,7 @@ export function TestCasesPage() {
   const [fStatus, setFStatus] = useState(() => searchParams.get('status') || '')
   const [fModule, setFModule] = useState(() => searchParams.get('module') || '')
   const [fAssignee, setFAssignee] = useState(() => searchParams.get('assignee') || '')
+  const [fTag, setFTag] = useState(() => searchParams.get('tag') || '')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState([])
@@ -132,7 +136,7 @@ export function TestCasesPage() {
   const sortableTestCases = useMemo(
     () => testCases.map((tc) => ({
       ...tc,
-      _tcId: tc.sourceTcId || tc.id.slice(0, 8).toUpperCase(),
+      _tcId: getTestCaseDisplayId(tc),
     })),
     [testCases],
   )
@@ -143,8 +147,9 @@ export function TestCasesPage() {
     setter(e.target.value)
     setPage(1)
   }
-  const clearFilters = () => { setSearch(''); setFPriority(''); setFStatus(''); setFModule(''); setFAssignee(''); setPage(1) }
-  const activeFilterCount = [search, fPriority, fStatus, fModule, fAssignee].filter(Boolean).length
+  const clearFilters = () => { setSearch(''); setFPriority(''); setFStatus(''); setFModule(''); setFAssignee(''); setFTag(''); setPage(1) }
+  const activeFilterCount = [search, fPriority, fStatus, fModule, fAssignee, fTag].filter(Boolean).length
+  const filterByTag = (tag) => { setFTag((cur) => (cur === tag ? '' : tag)); setPage(1) }
 
   const handleAdd = (e) => {
     e.preventDefault()
@@ -177,6 +182,7 @@ export function TestCasesPage() {
       assignee: tc.assignee || '', steps: tc.steps?.length ? [...tc.steps] : [''],
       testData: tc.testData || '', expected: tc.expected || '', actual: tc.actual || '',
       status: tc.status || 'Not Executed', devRemarks: tc.devRemarks || '', qaRemarks: tc.qaRemarks || '',
+      tags: tc.tags || [],
     })
     setShowAdd(true)
   }
@@ -240,9 +246,10 @@ export function TestCasesPage() {
       createdAt: new Date().toISOString(),
       updatedAt: undefined,
       updatedBy: undefined,
-      history: [historyEntry('cloned', user, `Cloned from ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}`)],
+      history: [historyEntry('cloned', user, `Cloned from ${getTestCaseDisplayId(tc)}`)],
     }
     delete clone.id
+    delete clone.sourceTcId   // clone gets its own fresh TC-XX-NNN id
     delete clone.createdBy
     delete clone.createdByName
     delete clone.updatedByName
@@ -252,13 +259,15 @@ export function TestCasesPage() {
   // Derive unique module values for filter dropdown
   const modules = [...new Set(testCases.map((t) => t.module).filter(Boolean))]
   const assignees = [...new Set(testCases.map((t) => t.assignee).filter(Boolean))]
+  const allTags = [...new Set(testCases.flatMap((t) => t.tags || []))].sort((a, b) => a.localeCompare(b))
 
   const visible = sortedCases.filter((tc) => {
-    if (search && !tc.title.toLowerCase().includes(search.toLowerCase())) return false
+    if (!testCaseMatchesSearch(tc, search)) return false
     if (fPriority && tc.priority !== fPriority) return false
     if (fStatus && tc.status !== fStatus) return false
     if (fModule && tc.module !== fModule) return false
     if (fAssignee && tc.assignee !== fAssignee) return false
+    if (fTag && !(tc.tags || []).includes(fTag)) return false
     return true
   })
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize))
@@ -267,6 +276,7 @@ export function TestCasesPage() {
   const pagedCases = visible.slice(startIndex, startIndex + pageSize)
   const rangeStart = visible.length === 0 ? 0 : startIndex + 1
   const rangeEnd = Math.min(startIndex + pageSize, visible.length)
+  const visibleSharedSteps = sharedSteps.filter((group) => sharedStepMatchesSearch(group, sharedSearch))
 
   return (
     <>
@@ -350,6 +360,12 @@ export function TestCasesPage() {
               <select aria-label="Assignee filter" value={fAssignee} onChange={updateListControl(setFAssignee)} className={fAssignee ? 'filter-active' : ''}>
                 <option value="">Assignee</option>
                 {assignees.map((a) => <option key={a}>{a}</option>)}
+              </select>
+            )}
+            {allTags.length > 0 && (
+              <select aria-label="Tag filter" value={fTag} onChange={updateListControl(setFTag)} className={fTag ? 'filter-active' : ''}>
+                <option value="">Tag</option>
+                {allTags.map((t) => <option key={t}>{t}</option>)}
               </select>
             )}
             {activeFilterCount > 0 && (
@@ -450,11 +466,12 @@ export function TestCasesPage() {
                           onChange={() => toggleSelected(tc.id)}
                         />
                       </td>
-                      <td className="mono">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</td>
+                      <td className="mono">{getTestCaseDisplayId(tc)}</td>
                       <td>
                         <Link className="tc-title-link" to={`/projects/${projectId}/test-cases/${tc.id}`}>
                           {tc.title}
                         </Link>
+                        <TagList tags={tc.tags} onTagClick={filterByTag} activeTag={fTag} />
                       </td>
                       <td>{tc.module || '—'}</td>
                       <td>
@@ -520,7 +537,7 @@ export function TestCasesPage() {
               {pagedCases.map((tc) => (
                 <div className="mobile-card" key={tc.id}>
                   <div className="mobile-card-header">
-                    <span className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
+                    <span className="mono tc-id">{getTestCaseDisplayId(tc)}</span>
                     <div className="mobile-card-header-badges">
                       <select
                         className={`inline-select status-select priority-${(tc.priority || 'Med').toLowerCase()}`}
@@ -551,6 +568,7 @@ export function TestCasesPage() {
                   <h3 className="mobile-card-title">
                     <Link to={`/projects/${projectId}/test-cases/${tc.id}`}>{tc.title}</Link>
                   </h3>
+                  <TagList tags={tc.tags} onTagClick={filterByTag} activeTag={fTag} />
                   <div className="mobile-card-details">
                     <div>
                       <span>Module:</span>
@@ -654,14 +672,14 @@ export function TestCasesPage() {
                 </tr>
               </thead>
               <tbody>
-                {sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).length === 0 ? (
+                {visibleSharedSteps.length === 0 ? (
                   <tr>
                     <td colSpan="4">
                       <div className="empty-table-row">No shared steps found.</div>
                     </td>
                   </tr>
                 ) : (
-                  sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).map(g => (
+                  visibleSharedSteps.map(g => (
                     <tr key={g.id}>
                       <td><strong>{g.name}</strong></td>
                       <td className="text-muted">{g.description || '—'}</td>
@@ -690,10 +708,10 @@ export function TestCasesPage() {
           </div>
 
           <div className="mobile-card-list">
-            {sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).length === 0 ? (
+            {visibleSharedSteps.length === 0 ? (
               <div className="empty-table-row">No shared steps found.</div>
             ) : (
-              sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).map(g => (
+              visibleSharedSteps.map(g => (
                 <div className="mobile-card" key={g.id}>
                   <div className="mobile-card-header">
                     <strong style={{ fontSize: 14 }}>{g.name}</strong>
@@ -843,6 +861,16 @@ export function TestCasesPage() {
                 <input value={form.qaRemarks} onChange={set('qaRemarks')} placeholder="Notes from QA" />
               </label>
             </div>
+            <label>
+              Tags
+              <TagInput
+                id="tc-tags"
+                value={form.tags}
+                onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+                suggestions={allTags}
+                placeholder="e.g. smoke, regression, mobile…"
+              />
+            </label>
             <div className="modal-footer">
               <button type="button" className="secondary-button" onClick={close}>Cancel</button>
               <button type="submit" className="primary-button">{editTc ? 'Save changes' : 'Add test case'}</button>

@@ -5,6 +5,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/StatusPill'
 import { StepBuilder } from '../components/StepBuilder'
+import { TagInput, TagList } from '../components/TagInput'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { useUser } from '../context/UserContext'
@@ -67,6 +68,7 @@ export function TestCaseDetailPage() {
 
   const steps = Array.isArray(tc.steps) ? tc.steps : []
   const linkedBugs = bugs.filter((b) => b.linkedTestCase === testCaseId)
+  const allTags = [...new Set(testCases.flatMap((t) => t.tags || []))].sort((a, b) => a.localeCompare(b))
 
   const openEdit = () => {
     setForm({
@@ -76,6 +78,7 @@ export function TestCaseDetailPage() {
       testData: tc.testData || '', expected: tc.expected || '', actual: tc.actual || '',
       status: tc.status, devRemarks: tc.devRemarks || '', qaRemarks: tc.qaRemarks || '',
       evidenceLinks: tc.evidenceLinks || [],
+      tags: tc.tags || [],
     })
     setEditing(true)
   }
@@ -366,6 +369,9 @@ export function TestCaseDetailPage() {
           <dl>
             <div><dt>Priority</dt><dd><span className={`priority-badge priority-${tc.priority?.toLowerCase()}`}>{tc.priority || '—'}</span></dd></div>
             <div><dt>Assignee</dt><dd>{tc.assignee || '—'}</dd></div>
+            {tc.tags?.length > 0 && (
+              <div><dt>Tags</dt><dd><TagList tags={tc.tags} /></dd></div>
+            )}
             <div><dt>Actual result</dt><dd className={tc.actual ? '' : 'text-muted'}>{tc.actual || 'Not recorded'}</dd></div>
             <div><dt>Bugs</dt><dd>{linkedBugs.length} linked</dd></div>
             <div>
@@ -440,6 +446,15 @@ export function TestCaseDetailPage() {
               <label>Dev Remarks<input value={form.devRemarks} onChange={set('devRemarks')} placeholder="Notes from developer" /></label>
               <label>QA Remarks<input value={form.qaRemarks} onChange={set('qaRemarks')} placeholder="Notes from QA" /></label>
             </div>
+            <label>Tags
+              <TagInput
+                id="tc-detail-tags"
+                value={form.tags || []}
+                onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+                suggestions={allTags}
+                placeholder="e.g. smoke, regression, mobile…"
+              />
+            </label>
             <div>
               <label>Evidence links</label>
               <EvidenceLinksField

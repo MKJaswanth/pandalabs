@@ -36,5 +36,13 @@ export function useTestRuns(projectId) {
     return run
   }, [projectId, remoteReady])
 
-  return { runs, addRun, refresh }
+  const updateRun = useCallback((run) => {
+    const updated = { ...run, updatedAt: new Date().toISOString() }
+    saveTestRun(projectId, updated)
+    setRuns(getTestRuns(projectId).filter((r) => !isDeleted(r) && (!r.projectId || r.projectId === projectId)))
+    if (remoteReady) saveTestRunRemote(projectId, updated)
+    return updated
+  }, [projectId, remoteReady])
+
+  return { runs, addRun, updateRun, refresh }
 }
