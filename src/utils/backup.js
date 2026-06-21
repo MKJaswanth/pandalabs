@@ -4,22 +4,31 @@ import {
   getBugs,
   getCurrentUser,
   getProjects,
+  getRequirements,
   getTeamMembers,
   getTestCases,
+  getTestPlans,
+  getMilestones,
   getTestRuns,
+  milestonesKey,
   projectsKey,
+  requirementsKey,
   runsKey,
   sanitizeRecord,
   setCurrentUser,
   setTeamMembers,
   testCasesKey,
+  testPlansKey,
 } from './storage'
 import {
   clearWorkspaceRemote,
   saveBugRemote,
+  saveMilestoneRemote,
   saveProjectRemote,
+  saveRequirementRemote,
   saveTeamMemberRemote,
   saveTestCaseRemote,
+  saveTestPlanRemote,
   saveTestRunRemote,
 } from './remoteStorage'
 
@@ -41,6 +50,9 @@ export function createWorkspaceBackup() {
       testCases: getTestCases(project.id),
       bugs: getBugs(project.id),
       runs: getTestRuns(project.id),
+      requirements: getRequirements(project.id),
+      testPlans: getTestPlans(project.id),
+      milestones: getMilestones(project.id),
     },
   ]))
 
@@ -109,7 +121,7 @@ export function validateWorkspaceBackup(raw) {
       throw new Error('A project entry in the backup is missing a required id or name field.')
     }
     const data = safeProjectData[project.id] ?? {}
-    ;['testCases', 'bugs', 'runs'].forEach((key) => {
+    ;['testCases', 'bugs', 'runs', 'requirements', 'testPlans', 'milestones'].forEach((key) => {
       if (data[key] !== undefined && !Array.isArray(data[key])) {
         throw new Error(`Project "${project.name}" has invalid ${key} data (expected an array).`)
       }
@@ -134,9 +146,12 @@ export function summarizeBackup(backup) {
       testCases: summary.testCases + (data.testCases?.length ?? 0),
       bugs: summary.bugs + (data.bugs?.length ?? 0),
       runs: summary.runs + (data.runs?.length ?? 0),
+      requirements: (summary.requirements ?? 0) + (data.requirements?.length ?? 0),
+      testPlans: (summary.testPlans ?? 0) + (data.testPlans?.length ?? 0),
+      milestones: (summary.milestones ?? 0) + (data.milestones?.length ?? 0),
       teamMembers: backup.data.teamMembers.length,
     }
-  }, { projects: 0, testCases: 0, bugs: 0, runs: 0, teamMembers: 0 })
+  }, { projects: 0, testCases: 0, bugs: 0, runs: 0, requirements: 0, testPlans: 0, milestones: 0, teamMembers: 0 })
 }
 
 export function restoreWorkspaceBackup(backup, mode) {
@@ -154,6 +169,9 @@ export function restoreWorkspaceBackup(backup, mode) {
       set(testCasesKey(project.id), sanitizedTestCases)
       set(bugsKey(project.id), sanitizedBugs)
       set(runsKey(project.id), data.runs ?? [])
+      set(requirementsKey(project.id), data.requirements ?? [])
+      set(testPlansKey(project.id), data.testPlans ?? [])
+      set(milestonesKey(project.id), data.milestones ?? [])
     })
   } else {
     const projects = uniqueById(getProjects(), incoming.projects)
@@ -169,6 +187,9 @@ export function restoreWorkspaceBackup(backup, mode) {
       set(testCasesKey(project.id), uniqueById(getTestCases(project.id), sanitizedTestCases))
       set(bugsKey(project.id), uniqueById(getBugs(project.id), sanitizedBugs))
       set(runsKey(project.id), uniqueById(getTestRuns(project.id), data.runs ?? []))
+      set(requirementsKey(project.id), uniqueById(getRequirements(project.id), data.requirements ?? []))
+      set(testPlansKey(project.id), uniqueById(getTestPlans(project.id), data.testPlans ?? []))
+      set(milestonesKey(project.id), uniqueById(getMilestones(project.id), data.milestones ?? []))
     })
   }
 
@@ -195,6 +216,9 @@ export async function uploadWorkspaceToCloud(backup, mode = 'merge') {
       ...(data.testCases ?? []).map((tc) => saveTestCaseRemote(project.id, tc)),
       ...(data.bugs ?? []).map((bug) => saveBugRemote(project.id, bug)),
       ...(data.runs ?? []).map((run) => saveTestRunRemote(project.id, run)),
+      ...(data.requirements ?? []).map((req) => saveRequirementRemote(project.id, req)),
+      ...(data.testPlans ?? []).map((plan) => saveTestPlanRemote(project.id, plan)),
+      ...(data.milestones ?? []).map((m) => saveMilestoneRemote(project.id, m)),
     ])
   }))
 }

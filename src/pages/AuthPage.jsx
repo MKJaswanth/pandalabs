@@ -13,7 +13,7 @@ function GoogleIcon() {
   )
 }
 
-export function AuthPage() {
+export function AuthPage({ onBack }) {
   const { signInWithGoogle, signInWithEmail, signUpWithEmail, signInAsGuest, redirectError } = useAuth()
   const [mode, setMode] = useState('login') // 'login' | 'register'
   const [email, setEmail] = useState('')
@@ -70,6 +70,14 @@ export function AuthPage() {
   return (
     <div className="auth-backdrop">
       <div className="auth-card">
+        {onBack && (
+          <button type="button" className="auth-back" onClick={onBack}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            Back
+          </button>
+        )}
         <div className="auth-brand">
           <span className="brand-mark" aria-hidden>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">

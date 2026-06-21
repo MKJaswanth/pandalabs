@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { newId } from '../utils/id'
 import { deleteTestCase, getTestCases, getTestCasesRaw, isDeleted, mergeById, saveTestCase, setTestCases as setTestCasesCache, getCurrentUser } from '../utils/storage'
 import { deleteTestCaseRemote, saveTestCaseRemote, subscribeTestCases } from '../utils/remoteStorage'
@@ -6,6 +6,7 @@ import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
 import { addActivity } from '../utils/activity'
 import { describeTestCaseChanges } from '../utils/history'
+import { isValidTcId, moduleCode, nextTcId } from '../utils/testCaseId'
 import { useNotifications } from './useNotifications'
 
 export function useTestCases(projectId) {
@@ -27,6 +28,42 @@ export function useTestCases(projectId) {
     })
   }, [projectId, remoteReady])
 
+  // One-time backfill: assign canonical TC-XX-NNN ids to any test case with a
+  // blank or non-conforming id (e.g. legacy "TC_006" or hex fallbacks). Valid
+  // ids are left untouched; numbering continues per module.
+  const backfillTcIds = useCallback(() => {
+    const current = getTestCases(projectId)
+    const invalid = current.filter((t) => !isValidTcId(t.sourceTcId))
+    if (invalid.length === 0) return
+
+    const counters = {}
+    current.forEach((t) => {
+      const match = /^TC-([A-Z]{2})-(\d+)$/.exec(t.sourceTcId || '')
+      if (match) counters[match[1]] = Math.max(counters[match[1]] || 0, parseInt(match[2], 10))
+    })
+
+    const ordered = [...invalid].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    ordered.forEach((t) => {
+      const code = moduleCode(t.module)
+      const next = (counters[code] || 0) + 1
+      counters[code] = next
+      const updated = { ...t, sourceTcId: `TC-${code}-${String(next).padStart(3, '0')}` }
+      saveTestCase(projectId, updated)
+      if (remoteReady) saveTestCaseRemote(projectId, updated)
+    })
+    setTestCasesState(getTestCases(projectId))
+  }, [projectId, remoteReady])
+
+  const backfilledFor = useRef('')
+  useEffect(() => {
+    if (!projectId || backfilledFor.current === projectId) return undefined
+    if (testCases.length === 0) return undefined
+    backfilledFor.current = projectId
+    let cancelled = false
+    queueMicrotask(() => { if (!cancelled) backfillTcIds() })
+    return () => { cancelled = true }
+  }, [projectId, testCases.length, backfillTcIds])
+
   const addTestCase = useCallback((data) => {
     const creatorId = auth?.currentUser?.uid || ''
     const creatorName = getCurrentUser() || ''
@@ -39,6 +76,11 @@ export function useTestCases(projectId) {
       createdByName: data.createdByName || creatorName || 'Unknown',
       updatedBy: data.updatedBy || creatorId || creatorName || 'Unknown',
       updatedByName: data.updatedByName || creatorName || 'Unknown',
+    }
+    // Always assign a canonical TC-XX-NNN id. Blank ids (normal flow) and
+    // invalid ones (e.g. imported "TC_006") are (re)generated per module.
+    if (!isValidTcId(tc.sourceTcId)) {
+      tc.sourceTcId = nextTcId(tc.module, getTestCases(projectId))
     }
     saveTestCase(projectId, tc)
     setTestCasesState(getTestCases(projectId))

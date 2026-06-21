@@ -5,9 +5,11 @@ import { StatusPill } from '../components/StatusPill'
 import { useUser } from '../context/UserContext'
 import { useProjects } from '../hooks/useProjects'
 import { useActivity } from '../hooks/useActivity'
-import { getBugs, getTestCases, getTestRuns } from '../utils/storage'
+import { useWorkspaceData } from '../hooks/useWorkspaceData'
+import { getBugs, getTestCases, getTestRuns, getMilestones, getTestPlans } from '../utils/storage'
 import { ArrowRightIcon } from '../components/Icons'
 import { getProjectReportMetrics, isOpenBug } from '../utils/reportMetrics'
+import { getMilestoneMetrics } from '../utils/planMetrics'
 import { normalizeTestStatus } from '../utils/status'
 
 function QuickActionIcon({ name }) {
@@ -25,6 +27,9 @@ export function DashboardPage() {
   const { user } = useUser()
   const { projects } = useProjects()
   const { activities: allActivities } = useActivity()
+  // Warm the cache for every project so the aggregate metrics below are correct
+  // even before the user opens each project. Bumps as each project's data lands.
+  const dataVersion = useWorkspaceData(projects)
 
   const activities = useMemo(() => {
     return allActivities.slice(0, 5)
@@ -38,7 +43,8 @@ export function DashboardPage() {
       const metrics = getProjectReportMetrics({ project: p, testCases: cases, bugs, runs })
       return { ...p, cases: metrics.total, openBugs: metrics.openBugs, passRate: metrics.passRate, latestRun: metrics.latestRun }
     })
-  }, [projects])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dataVersion intentionally re-runs this cache-backed read as prefetch lands
+  }, [projects, dataVersion])
 
   const totalCases = useMemo(() => enriched.reduce((s, p) => s + p.cases, 0), [enriched])
   const totalOpenBugs = useMemo(() => enriched.reduce((s, p) => s + p.openBugs, 0), [enriched])
@@ -72,7 +78,8 @@ export function DashboardPage() {
     })
 
     return { allBugs: bugsList, allBlockers: blockersList, allRuns: runsList }
-  }, [projects])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dataVersion intentionally re-runs this cache-backed read as prefetch lands
+  }, [projects, dataVersion])
 
   // Sort and filter lists
   const activeBugs = useMemo(() => {
@@ -93,6 +100,34 @@ export function DashboardPage() {
       .sort((a, b) => new Date(b.completedAt || b.date) - new Date(a.completedAt || a.date))
       .slice(0, 5)
   }, [allRuns])
+
+  const upcomingMilestones = useMemo(() => {
+    const items = []
+    projects.forEach((p) => {
+      const milestones = getMilestones(p.id)
+      const plans = getTestPlans(p.id)
+      const runs = getTestRuns(p.id)
+      milestones
+        .filter((m) => m.status !== 'Completed')
+        .forEach((milestone) => {
+          const metrics = getMilestoneMetrics(milestone, plans, runs)
+          items.push({
+            milestone,
+            metrics,
+            projectId: p.id,
+            projectName: p.name,
+          })
+        })
+    })
+    return items
+      .sort((a, b) => {
+        const aDue = a.milestone.dueDate || '9999-12-31'
+        const bDue = b.milestone.dueDate || '9999-12-31'
+        return aDue.localeCompare(bDue)
+      })
+      .slice(0, 5)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dataVersion intentionally re-runs this cache-backed read as prefetch lands
+  }, [projects, dataVersion])
 
   const severityTone = { Critical: 'failed', Major: 'pending', Minor: 'passed' }
 
@@ -139,7 +174,7 @@ export function DashboardPage() {
       </section>
 
       {/* Projects Overview */}
-      <section className="panel">
+      <section className="panel mt-lg">
         <div className="section-header">
           <h2>Projects at a glance</h2>
           <Link to="/projects" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -353,6 +388,36 @@ export function DashboardPage() {
           )}
         </section>
       </div>
+
+      {upcomingMilestones.length > 0 && (
+        <section className="panel dashboard-detail-panel" style={{ marginTop: 16 }}>
+          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2>Release milestones</h2>
+            <StatusPill tone="neutral">{upcomingMilestones.length} active</StatusPill>
+          </div>
+          <div className="dashboard-list">
+            {upcomingMilestones.map(({ milestone, metrics, projectId, projectName }) => (
+              <div className="dashboard-list-item" key={`${projectId}-${milestone.id}`}>
+                <div className="list-item-main">
+                  <Link to={`/projects/${projectId}/test-plans`} className="list-item-title">{milestone.name}</Link>
+                  <span className={`list-item-badge ${metrics.onTrack ? 'text-success' : 'text-danger'}`}>
+                    {metrics.progressPct}% · {metrics.onTrack ? 'On track' : 'At risk'}
+                  </span>
+                </div>
+                <div className="list-item-meta">
+                  <span className="meta-project">{projectName}</span>
+                  {milestone.dueDate && (
+                    <span className="meta-date">
+                      {' · Due '}{new Date(milestone.dueDate).toLocaleDateString()}
+                      {metrics.overdue ? ' (overdue)' : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </>
   )
 }

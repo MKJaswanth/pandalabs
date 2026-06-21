@@ -3,6 +3,7 @@ import { EvidenceLinksField } from '../components/EvidenceLinksField'
 import { XIcon, ChevronLeftIcon, ChevronRightIcon, SortAscIcon, SortDescIcon, SortNoneIcon } from '../components/Icons'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Modal } from '../components/Modal'
+import { TagInput, TagList } from '../components/TagInput'
 import { PageHeader } from '../components/PageHeader'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
@@ -10,6 +11,7 @@ import { useUser } from '../context/UserContext'
 import { useBugs } from '../hooks/useBugs'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useRequirements } from '../hooks/useRequirements'
 import { useActivity } from '../hooks/useActivity'
 import { useSortable } from '../hooks/useSortable'
 import { newId } from '../utils/id'
@@ -17,6 +19,7 @@ import { downloadBugTemplate, getReporterName } from '../utils/export'
 import { BugBulkUploadModal } from '../components/BugBulkUploadModal'
 import { DownloadIcon, UploadIcon } from '../components/Icons'
 import { useUserRole } from '../hooks/useUserRole'
+import { bugMatchesSearch } from '../utils/entitySearch'
 
 function SortTh({ col, label, active, dir, onSort }) {
   const isActive = active === col
@@ -43,16 +46,17 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 const blank = (prefillTcId = '') => ({
   title: '', description: '', severity: 'Major', status: 'Open', linkedTestCase: prefillTcId,
+  linkedRequirementId: '',
   sourceBugId: '', module: '', stepsToReproduce: '', expected: '', actual: '',
   priority: 'Medium', environment: '', build: '', assignedTo: '',
   reportedBy: '', reportedDate: today(),
   fixedInBuild: '', retestStatus: 'Not Retested', devRemarks: '', qaRemarks: '',
-  evidenceLinks: [],
+  evidenceLinks: [], tags: [],
 })
 
 const shortId = (id) => id.slice(0, 8).toUpperCase()
 
-function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submitLabel, history = [], activities = [], disabled = false }) {
+function BugForm({ form, setForm, testCases, requirements = [], members, onCancel, onSubmit, submitLabel, history = [], activities = [], disabled = false, tagSuggestions = [] }) {
   const { user } = useUser()
   const set = (key) => (e) => setForm((c) => ({ ...c, [key]: e.target.value }))
 
@@ -66,8 +70,14 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
 
       <div className="form-row">
         <label>
-          Bug ID <span className="hint">(optional)</span>
-          <input value={form.sourceBugId} onChange={set('sourceBugId')} placeholder="e.g. BUG-001" />
+          Bug ID <span className="hint">(auto-assigned)</span>
+          <input
+            value={form.sourceBugId || 'Assigned automatically on save'}
+            readOnly
+            disabled
+            className="input-disabled"
+            aria-label="Bug ID (auto-assigned)"
+          />
         </label>
         <label>
           Module
@@ -136,6 +146,16 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
         </select>
       </label>
 
+      <label>
+        Linked requirement
+        <select value={form.linkedRequirementId} onChange={set('linkedRequirementId')}>
+          <option value="">None</option>
+          {requirements.map((req) => (
+            <option key={req.id} value={req.id}>{req.key ? `${req.key}: ` : ''}{req.title}</option>
+          ))}
+        </select>
+      </label>
+
       <div className="form-row">
         <label>
           Assigned To
@@ -182,6 +202,17 @@ function BugForm({ form, setForm, testCases, members, onCancel, onSubmit, submit
           <textarea value={form.qaRemarks} onChange={set('qaRemarks')} rows={2} placeholder="QA notes" />
         </label>
       </div>
+
+      <label>
+        Tags
+        <TagInput
+          id="bug-tags"
+          value={form.tags || []}
+          onChange={(tags) => setForm((c) => ({ ...c, tags }))}
+          suggestions={tagSuggestions}
+          placeholder="e.g. regression, flaky, P1…"
+        />
+      </label>
 
       <div>
         <label>Evidence links</label>
@@ -243,6 +274,7 @@ export function BugTrackerPage() {
   const { isTester, isViewer } = useUserRole()
   const { bugs, addBug, removeBug, updateBug } = useBugs(projectId)
   const { testCases } = useTestCases(projectId)
+  const { requirements } = useRequirements(projectId)
   const { members } = useTeamMembers()
   const { getActivitiesByEntity } = useActivity()
   const confirm = useConfirm()
@@ -257,6 +289,7 @@ export function BugTrackerPage() {
   const [fStatus, setFStatus] = useState(() => searchParams.get('status') || '')
   const [fModule, setFModule] = useState(() => searchParams.get('module') || '')
   const [fAssignee, setFAssignee] = useState(() => searchParams.get('assignee') || '')
+  const [fTag, setFTag] = useState(() => searchParams.get('tag') || '')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const { sorted: sortedBugs, sortKey: bugSortKey, sortDir: bugSortDir, toggle: bugToggle } = useSortable(bugs)
@@ -274,6 +307,7 @@ export function BugTrackerPage() {
       severity:         bug.severity,
       status:           bug.status,
       linkedTestCase:   bug.linkedTestCase || '',
+      linkedRequirementId: bug.linkedRequirementId || '',
       sourceBugId:      bug.sourceBugId || '',
       module:           bug.module || '',
       stepsToReproduce: bug.stepsToReproduce || '',
@@ -290,6 +324,7 @@ export function BugTrackerPage() {
       devRemarks:       bug.devRemarks || '',
       qaRemarks:        bug.qaRemarks || '',
       evidenceLinks:    bug.evidenceLinks || [],
+      tags:             bug.tags || [],
     })
   }
 
@@ -367,13 +402,15 @@ export function BugTrackerPage() {
 
   const bugModules = [...new Set(bugs.map((b) => b.module).filter(Boolean))]
   const bugAssignees = [...new Set(bugs.map((b) => b.assignedTo).filter(Boolean))]
+  const allTags = [...new Set(bugs.flatMap((b) => b.tags || []))].sort((a, b) => a.localeCompare(b))
 
   const visible = sortedBugs.filter((b) => {
-    if (search && !b.title.toLowerCase().includes(search.toLowerCase()) && !b.description?.toLowerCase().includes(search.toLowerCase())) return false
+    if (!bugMatchesSearch(b, search)) return false
     if (fSeverity && b.severity !== fSeverity) return false
     if (fStatus && b.status !== fStatus) return false
     if (fModule && b.module !== fModule) return false
     if (fAssignee && b.assignedTo !== fAssignee) return false
+    if (fTag && !(b.tags || []).includes(fTag)) return false
     return true
   })
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize))
@@ -384,8 +421,9 @@ export function BugTrackerPage() {
   const rangeEnd = Math.min(startIndex + pageSize, visible.length)
 
   const updateListControl = (setter) => (e) => { setter(e.target.value); setPage(1) }
-  const clearFilters = () => { setSearch(''); setFSeverity(''); setFStatus(''); setFModule(''); setFAssignee(''); setPage(1) }
-  const activeFilterCount = [search, fSeverity, fStatus, fModule, fAssignee].filter(Boolean).length
+  const clearFilters = () => { setSearch(''); setFSeverity(''); setFStatus(''); setFModule(''); setFAssignee(''); setFTag(''); setPage(1) }
+  const activeFilterCount = [search, fSeverity, fStatus, fModule, fAssignee, fTag].filter(Boolean).length
+  const filterByTag = (tag) => { setFTag((cur) => (cur === tag ? '' : tag)); setPage(1) }
 
   return (
     <>
@@ -438,6 +476,12 @@ export function BugTrackerPage() {
               {bugAssignees.map((a) => <option key={a}>{a}</option>)}
             </select>
           )}
+          {allTags.length > 0 && (
+            <select aria-label="Tag filter" value={fTag} onChange={updateListControl(setFTag)} className={fTag ? 'filter-active' : ''}>
+              <option value="">Tag</option>
+              {allTags.map((t) => <option key={t}>{t}</option>)}
+            </select>
+          )}
           <div className="toolbar-info">
             {activeFilterCount > 0 && (
               <button className="filter-clear-btn" type="button" onClick={clearFilters}>
@@ -486,6 +530,7 @@ export function BugTrackerPage() {
                           {[bug.environment, bug.build].filter(Boolean).join(' · ')}
                         </p>
                       )}
+                      <TagList tags={bug.tags} onTagClick={filterByTag} activeTag={fTag} />
                     </td>
                     <td>{bug.module || '—'}</td>
                     <td>
@@ -572,6 +617,7 @@ export function BugTrackerPage() {
                   <button className="link-btn" type="button" onClick={() => openEdit(bug)}>{bug.title}</button>
                 </h3>
                 {bug.description && <p className="mobile-card-desc">{bug.description}</p>}
+                <TagList tags={bug.tags} onTagClick={filterByTag} activeTag={fTag} />
                 <div className="mobile-card-details">
                   <div>
                     <span>Severity:</span>
@@ -651,10 +697,12 @@ export function BugTrackerPage() {
             form={form}
             setForm={setForm}
             testCases={testCases}
+            requirements={requirements}
             members={members}
             onCancel={() => setShowAdd(false)}
             onSubmit={handleAdd}
             submitLabel="Log bug"
+            tagSuggestions={allTags}
           />
         </Modal>
       )}
@@ -665,6 +713,7 @@ export function BugTrackerPage() {
             form={form}
             setForm={setForm}
             testCases={testCases}
+            requirements={requirements}
             members={members}
             history={editing.history}
             activities={getActivitiesByEntity('bug', editing.id)}
@@ -672,6 +721,7 @@ export function BugTrackerPage() {
             onSubmit={handleEdit}
             submitLabel="Save changes"
             disabled={isViewer}
+            tagSuggestions={allTags}
           />
         </Modal>
       )}

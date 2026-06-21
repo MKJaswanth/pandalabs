@@ -4,20 +4,23 @@ import { useSortable } from '../hooks/useSortable'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { BulkUploadModal } from '../components/BulkUploadModal'
 import { Modal } from '../components/Modal'
+import { TagInput, TagList } from '../components/TagInput'
 import { PageHeader } from '../components/PageHeader'
 import { StepBuilder } from '../components/StepBuilder'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { useTeamMembers } from '../hooks/useTeamMembers'
 import { useTestCases } from '../hooks/useTestCases'
+import { useBugs } from '../hooks/useBugs'
 import { useProjects } from '../hooks/useProjects'
 import { useUser } from '../context/UserContext'
 import { useSharedSteps } from '../hooks/useSharedSteps'
 import { useUserRole } from '../hooks/useUserRole'
 import { describeTestCaseChanges, historyEntry, withHistory } from '../utils/history'
-import { STATUS_TONE, TEST_STATUSES } from '../utils/status'
+import { STATUS_TONE, TEST_STATUSES, normalizeTestStatus } from '../utils/status'
 import { exportTestCases } from '../utils/export'
 import { addActivity } from '../utils/activity'
+import { newId } from '../utils/id'
 
 function SortTh({ col, label, active, dir, onSort }) {
   const isActive = active === col
@@ -31,17 +34,22 @@ function SortTh({ col, label, active, dir, onSort }) {
 
 const PRIORITIES = ['High', 'Med', 'Low']
 const PAGE_SIZES = [10, 25, 100]
+const SEVERITIES = ['Critical', 'Major', 'Minor']
+const BUG_STATUSES = ['Open', 'In review', 'Closed']
+
+const getTestCaseDisplayId = (tc) => tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()
 
 const blankForm = () => ({
   title: '', module: '', scenario: '', preconditions: '', priority: 'Med',
   assignee: '', steps: [''], testData: '', expected: '', actual: '',
-  status: 'Not Executed', devRemarks: '', qaRemarks: '',
+  status: 'Not Executed', devRemarks: '', qaRemarks: '', tags: [],
 })
 
 export function TestCasesPage() {
   const { projectId } = useParams()
   const [searchParams] = useSearchParams()
   const { testCases, addTestCase, updateTestCase, removeTestCase, removeTestCases } = useTestCases(projectId)
+  const { addBug } = useBugs(projectId)
   const { members } = useTeamMembers()
   const { projects } = useProjects()
   const { user } = useUser()
@@ -59,12 +67,16 @@ export function TestCasesPage() {
   const [fStatus, setFStatus] = useState(() => searchParams.get('status') || '')
   const [fModule, setFModule] = useState(() => searchParams.get('module') || '')
   const [fAssignee, setFAssignee] = useState(() => searchParams.get('assignee') || '')
+  const [fTag, setFTag] = useState(() => searchParams.get('tag') || '')
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkStatus, setBulkStatus] = useState('Pass')
 
   const [activeTab, setActiveTab] = useState('cases') // 'cases' | 'shared-steps'
+  const [showBugModal, setShowBugModal] = useState(false)
+  const [bugForm, setBugForm] = useState(null)
+  const [failedTcId, setFailedTcId] = useState(null)
   const { sharedSteps, addSharedStep, updateSharedStep, removeSharedStep } = useSharedSteps(projectId)
   const [showSharedModal, setShowSharedModal] = useState(false)
   const [editSharedGroup, setEditSharedGroup] = useState(null)
@@ -132,7 +144,7 @@ export function TestCasesPage() {
   const sortableTestCases = useMemo(
     () => testCases.map((tc) => ({
       ...tc,
-      _tcId: tc.sourceTcId || tc.id.slice(0, 8).toUpperCase(),
+      _tcId: getTestCaseDisplayId(tc),
     })),
     [testCases],
   )
@@ -143,8 +155,60 @@ export function TestCasesPage() {
     setter(e.target.value)
     setPage(1)
   }
-  const clearFilters = () => { setSearch(''); setFPriority(''); setFStatus(''); setFModule(''); setFAssignee(''); setPage(1) }
-  const activeFilterCount = [search, fPriority, fStatus, fModule, fAssignee].filter(Boolean).length
+
+  // When a TC status changes to Fail, prompt to log a bug (pre-filled, linked to the TC).
+  const handleTcStatusChange = (tc, newStatus) => {
+    const updated = { ...tc, status: newStatus, updatedAt: new Date().toISOString(), updatedBy: user }
+    const changes = describeTestCaseChanges(tc, updated)
+    updateTestCase(changes.length
+      ? withHistory(updated, historyEntry('update', user, changes.join(', ')))
+      : updated)
+
+    // If changing TO Fail, offer to log a bug.
+    if (normalizeTestStatus(newStatus) === 'Fail') {
+      setBugForm({
+        title: `Failed: ${tc.title}`,
+        description: '',
+        severity: 'Major',
+        status: 'Open',
+        linkedTestCase: tc.id,
+        linkedRequirementId: '',
+        module: tc.module || '',
+        evidenceLinks: [],
+        tags: [],
+      })
+      setFailedTcId(tc.id)
+      setShowBugModal(true)
+    }
+  }
+
+  const handleBugSubmit = (e) => {
+    e.preventDefault()
+    if (!bugForm.title.trim()) return
+    const initialHistory = {
+      id: newId(),
+      type: 'created',
+      user,
+      timestamp: new Date().toISOString(),
+      details: 'Bug created (from failed test case)',
+    }
+    addBug({ ...bugForm, history: [initialHistory] })
+    setShowBugModal(false)
+    setBugForm(null)
+    setFailedTcId(null)
+    toast.success('Bug logged')
+  }
+
+  const handleBugCancel = () => {
+    setShowBugModal(false)
+    setBugForm(null)
+    setFailedTcId(null)
+  }
+
+  const setBug = (k) => (e) => setBugForm((f) => ({ ...f, [k]: e.target.value }))
+  const clearFilters = () => { setSearch(''); setFPriority(''); setFStatus(''); setFModule(''); setFAssignee(''); setFTag(''); setPage(1) }
+  const activeFilterCount = [search, fPriority, fStatus, fModule, fAssignee, fTag].filter(Boolean).length
+  const filterByTag = (tag) => { setFTag((cur) => (cur === tag ? '' : tag)); setPage(1) }
 
   const handleAdd = (e) => {
     e.preventDefault()
@@ -177,6 +241,7 @@ export function TestCasesPage() {
       assignee: tc.assignee || '', steps: tc.steps?.length ? [...tc.steps] : [''],
       testData: tc.testData || '', expected: tc.expected || '', actual: tc.actual || '',
       status: tc.status || 'Not Executed', devRemarks: tc.devRemarks || '', qaRemarks: tc.qaRemarks || '',
+      tags: tc.tags || [],
     })
     setShowAdd(true)
   }
@@ -240,9 +305,10 @@ export function TestCasesPage() {
       createdAt: new Date().toISOString(),
       updatedAt: undefined,
       updatedBy: undefined,
-      history: [historyEntry('cloned', user, `Cloned from ${tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}`)],
+      history: [historyEntry('cloned', user, `Cloned from ${getTestCaseDisplayId(tc)}`)],
     }
     delete clone.id
+    delete clone.sourceTcId   // clone gets its own fresh TC-XX-NNN id
     delete clone.createdBy
     delete clone.createdByName
     delete clone.updatedByName
@@ -252,6 +318,7 @@ export function TestCasesPage() {
   // Derive unique module values for filter dropdown
   const modules = [...new Set(testCases.map((t) => t.module).filter(Boolean))]
   const assignees = [...new Set(testCases.map((t) => t.assignee).filter(Boolean))]
+  const allTags = [...new Set(testCases.flatMap((t) => t.tags || []))].sort((a, b) => a.localeCompare(b))
 
   const visible = sortedCases.filter((tc) => {
     if (search && !tc.title.toLowerCase().includes(search.toLowerCase())) return false
@@ -259,6 +326,7 @@ export function TestCasesPage() {
     if (fStatus && tc.status !== fStatus) return false
     if (fModule && tc.module !== fModule) return false
     if (fAssignee && tc.assignee !== fAssignee) return false
+    if (fTag && !(tc.tags || []).includes(fTag)) return false
     return true
   })
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize))
@@ -267,6 +335,7 @@ export function TestCasesPage() {
   const pagedCases = visible.slice(startIndex, startIndex + pageSize)
   const rangeStart = visible.length === 0 ? 0 : startIndex + 1
   const rangeEnd = Math.min(startIndex + pageSize, visible.length)
+  const visibleSharedSteps = sharedSteps.filter((group) => !sharedSearch || group.name.toLowerCase().includes(sharedSearch.toLowerCase()))
 
   return (
     <>
@@ -350,6 +419,12 @@ export function TestCasesPage() {
               <select aria-label="Assignee filter" value={fAssignee} onChange={updateListControl(setFAssignee)} className={fAssignee ? 'filter-active' : ''}>
                 <option value="">Assignee</option>
                 {assignees.map((a) => <option key={a}>{a}</option>)}
+              </select>
+            )}
+            {allTags.length > 0 && (
+              <select aria-label="Tag filter" value={fTag} onChange={updateListControl(setFTag)} className={fTag ? 'filter-active' : ''}>
+                <option value="">Tag</option>
+                {allTags.map((t) => <option key={t}>{t}</option>)}
               </select>
             )}
             {activeFilterCount > 0 && (
@@ -436,7 +511,7 @@ export function TestCasesPage() {
                     <th>
                       <SortTh col="status" label="Status" active={tcSortKey} dir={tcSortDir} onSort={tcToggle} />
                     </th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -450,11 +525,12 @@ export function TestCasesPage() {
                           onChange={() => toggleSelected(tc.id)}
                         />
                       </td>
-                      <td className="mono">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</td>
+                      <td className="mono">{getTestCaseDisplayId(tc)}</td>
                       <td>
                         <Link className="tc-title-link" to={`/projects/${projectId}/test-cases/${tc.id}`}>
                           {tc.title}
                         </Link>
+                        <TagList tags={tc.tags} onTagClick={filterByTag} activeTag={fTag} />
                       </td>
                       <td>{tc.module || '—'}</td>
                       <td>
@@ -478,10 +554,7 @@ export function TestCasesPage() {
                           value={tc.status}
                           aria-label="Status"
                           disabled={!isLead}
-                          onChange={(e) => updateTestCase(withHistory(
-                            { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
-                            historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
-                          ))}
+                          onChange={(e) => handleTcStatusChange(tc, e.target.value)}
                         >
                           {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
                         </select>
@@ -520,7 +593,7 @@ export function TestCasesPage() {
               {pagedCases.map((tc) => (
                 <div className="mobile-card" key={tc.id}>
                   <div className="mobile-card-header">
-                    <span className="mono tc-id">{tc.sourceTcId || tc.id.slice(0, 8).toUpperCase()}</span>
+                    <span className="mono tc-id">{getTestCaseDisplayId(tc)}</span>
                     <div className="mobile-card-header-badges">
                       <select
                         className={`inline-select status-select priority-${(tc.priority || 'Med').toLowerCase()}`}
@@ -539,10 +612,7 @@ export function TestCasesPage() {
                         value={tc.status}
                         aria-label="Status"
                         disabled={!isLead}
-                        onChange={(e) => updateTestCase(withHistory(
-                          { ...tc, status: e.target.value, updatedAt: new Date().toISOString(), updatedBy: user },
-                          historyEntry('status_change', user, `Status changed from ${tc.status} to ${e.target.value}`, tc.status, e.target.value),
-                        ))}
+                        onChange={(e) => handleTcStatusChange(tc, e.target.value)}
                       >
                         {TEST_STATUSES.map((s) => <option key={s}>{s}</option>)}
                       </select>
@@ -551,6 +621,7 @@ export function TestCasesPage() {
                   <h3 className="mobile-card-title">
                     <Link to={`/projects/${projectId}/test-cases/${tc.id}`}>{tc.title}</Link>
                   </h3>
+                  <TagList tags={tc.tags} onTagClick={filterByTag} activeTag={fTag} />
                   <div className="mobile-card-details">
                     <div>
                       <span>Module:</span>
@@ -650,18 +721,18 @@ export function TestCasesPage() {
                   <th>Name</th>
                   <th>Description</th>
                   <th>Steps count</th>
-                  <th style={{ width: 100, textAlign: 'right' }}>Actions</th>
+                  <th style={{ width: 100, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).length === 0 ? (
+                {visibleSharedSteps.length === 0 ? (
                   <tr>
                     <td colSpan="4">
                       <div className="empty-table-row">No shared steps found.</div>
                     </td>
                   </tr>
                 ) : (
-                  sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).map(g => (
+                  visibleSharedSteps.map(g => (
                     <tr key={g.id}>
                       <td><strong>{g.name}</strong></td>
                       <td className="text-muted">{g.description || '—'}</td>
@@ -690,10 +761,10 @@ export function TestCasesPage() {
           </div>
 
           <div className="mobile-card-list">
-            {sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).length === 0 ? (
+            {visibleSharedSteps.length === 0 ? (
               <div className="empty-table-row">No shared steps found.</div>
             ) : (
-              sharedSteps.filter(g => g.name.toLowerCase().includes(sharedSearch.toLowerCase())).map(g => (
+              visibleSharedSteps.map(g => (
                 <div className="mobile-card" key={g.id}>
                   <div className="mobile-card-header">
                     <strong style={{ fontSize: 14 }}>{g.name}</strong>
@@ -843,9 +914,70 @@ export function TestCasesPage() {
                 <input value={form.qaRemarks} onChange={set('qaRemarks')} placeholder="Notes from QA" />
               </label>
             </div>
+            <label>
+              Tags
+              <TagInput
+                id="tc-tags"
+                value={form.tags}
+                onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+                suggestions={allTags}
+                placeholder="e.g. smoke, regression, mobile…"
+              />
+            </label>
             <div className="modal-footer">
               <button type="button" className="secondary-button" onClick={close}>Cancel</button>
               <button type="submit" className="primary-button">{editTc ? 'Save changes' : 'Add test case'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {showBugModal && bugForm && (
+        <Modal title="Log bug from failed test case" onClose={handleBugCancel}>
+          <form className="modal-form" onSubmit={handleBugSubmit}>
+            <label>
+              Title <span className="required">*</span>
+              <input autoFocus value={bugForm.title} onChange={setBug('title')} />
+            </label>
+            <label>
+              Description
+              <textarea value={bugForm.description} onChange={setBug('description')} rows={3} placeholder="Steps to reproduce, environment, notes…" />
+            </label>
+            <div className="form-row">
+              <label>
+                Severity
+                <select value={bugForm.severity} onChange={setBug('severity')}>
+                  {SEVERITIES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </label>
+              <label>
+                Status
+                <select value={bugForm.status} onChange={setBug('status')}>
+                  {BUG_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </label>
+            </div>
+            <label>
+              Module
+              <input value={bugForm.module} onChange={setBug('module')} placeholder="e.g. Auth, Checkout" />
+            </label>
+            <label>
+              Linked test case
+              <input value={failedTcId ? testCases.find(tc => tc.id === failedTcId)?.title || 'Loading...' : ''} disabled className="input-disabled" />
+            </label>
+            <label>
+              Tags
+              <TagInput
+                id="bug-from-tc-tags"
+                value={bugForm.tags || []}
+                onChange={(tags) => setBugForm((f) => ({ ...f, tags }))}
+                suggestions={[]}
+                placeholder="e.g. regression, flaky…"
+              />
+            </label>
+            <div className="modal-footer">
+              <button type="button" className="secondary-button" onClick={handleBugCancel}>Skip</button>
+              <button type="submit" className="primary-button">Log bug</button>
             </div>
           </form>
         </Modal>
