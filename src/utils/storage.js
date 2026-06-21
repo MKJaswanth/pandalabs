@@ -91,6 +91,9 @@ export const deleteProject = (id) => {
   localStorage.removeItem(testCasesKey(id))
   localStorage.removeItem(bugsKey(id))
   localStorage.removeItem(runsKey(id))
+  localStorage.removeItem(requirementsKey(id))
+  localStorage.removeItem(testPlansKey(id))
+  localStorage.removeItem(milestonesKey(id))
 }
 
 export function sanitizeAllCache() {
@@ -417,3 +420,31 @@ export const saveRequirement = (projectId, requirement) => {
 }
 export const deleteRequirement = (projectId, id) =>
   set(requirementsKey(projectId), markDeleted(getRequirementsRaw(projectId), id))
+
+// Test plans (group test runs by release/sprint)
+export const testPlansKey = (projectId) => `${cachePrefix()}testplans_${projectId}`
+export const getTestPlansRaw = (projectId) => get(testPlansKey(projectId)) ?? []
+export const getTestPlans = (projectId) => excludeDeleted(getTestPlansRaw(projectId))
+export const setTestPlans = (projectId, plans) => set(testPlansKey(projectId), plans)
+export const saveTestPlan = (projectId, plan) => {
+  const list = getTestPlansRaw(projectId)
+  const idx = list.findIndex((p) => p.id === plan.id)
+  idx >= 0 ? (list[idx] = plan) : list.push(plan)
+  set(testPlansKey(projectId), list)
+}
+export const deleteTestPlan = (projectId, id) =>
+  set(testPlansKey(projectId), markDeleted(getTestPlansRaw(projectId), id))
+
+// Milestones (release deadlines linked to test plans)
+export const milestonesKey = (projectId) => `${cachePrefix()}milestones_${projectId}`
+export const getMilestonesRaw = (projectId) => get(milestonesKey(projectId)) ?? []
+export const getMilestones = (projectId) => excludeDeleted(getMilestonesRaw(projectId))
+export const setMilestones = (projectId, milestones) => set(milestonesKey(projectId), milestones)
+export const saveMilestone = (projectId, milestone) => {
+  const list = getMilestonesRaw(projectId)
+  const idx = list.findIndex((m) => m.id === milestone.id)
+  idx >= 0 ? (list[idx] = milestone) : list.push(milestone)
+  set(milestonesKey(projectId), list)
+}
+export const deleteMilestone = (projectId, id) =>
+  set(milestonesKey(projectId), markDeleted(getMilestonesRaw(projectId), id))

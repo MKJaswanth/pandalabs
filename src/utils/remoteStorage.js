@@ -398,3 +398,42 @@ export const saveRequirementRemote = (projectId, requirement) =>
   upsert(requirementsPath(projectId), requirement)
 export const deleteRequirementRemote = (projectId, id) =>
   tombstone(requirementsPath(projectId), id)
+
+const testPlansPath = (projectId) => [...projectPath(projectId), 'testPlans']
+
+export const subscribeTestPlans = (projectId, onChange) =>
+  subscribe(testPlansPath(projectId), onChange, byCreatedAtAsc)
+export const saveTestPlanRemote = (projectId, plan) =>
+  upsert(testPlansPath(projectId), plan)
+export const deleteTestPlanRemote = (projectId, id) =>
+  tombstone(testPlansPath(projectId), id)
+
+const milestonesPath = (projectId) => [...projectPath(projectId), 'milestones']
+
+export const subscribeMilestones = (projectId, onChange) =>
+  subscribe(milestonesPath(projectId), onChange, byCreatedAtAsc)
+export const saveMilestoneRemote = (projectId, milestone) =>
+  upsert(milestonesPath(projectId), milestone)
+export const deleteMilestoneRemote = (projectId, id) =>
+  tombstone(milestonesPath(projectId), id)
+
+// One-shot fetch of every collection for a single project. Used by global views
+// (Dashboard, Reports) so their aggregate numbers are correct without the user
+// having to open each project first to warm its live subscription. Includes
+// tombstoned docs so the caller can merge them into the cache correctly.
+export async function fetchProjectDataOnce(projectId) {
+  ensureFirebase()
+  const collectOnce = async (pathParts) => {
+    const snapshot = await getDocs(collection(db, ...pathParts))
+    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
+  }
+  const [testCases, bugs, runs, requirements, testPlans, milestones] = await Promise.all([
+    collectOnce(testCasesPath(projectId)),
+    collectOnce(bugsPath(projectId)),
+    collectOnce(runsPath(projectId)),
+    collectOnce(requirementsPath(projectId)),
+    collectOnce(testPlansPath(projectId)),
+    collectOnce(milestonesPath(projectId)),
+  ])
+  return { testCases, bugs, runs, requirements, testPlans, milestones }
+}

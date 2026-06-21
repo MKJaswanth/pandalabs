@@ -5,6 +5,7 @@ import { useActivity } from '../hooks/useActivity'
 import { useProjects } from '../hooks/useProjects'
 import { StatusPill } from '../components/StatusPill'
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
+import { activityMatchesSearch } from '../utils/entitySearch'
 
 const ACTIVITY_PAGE_SIZES = [25, 50, 100]
 
@@ -111,13 +112,7 @@ export function ActivityPage() {
         if (fromTime && createdTime < fromTime) return false
         if (toTime && createdTime > toTime) return false
       }
-      if (filterSearch) {
-        const query = filterSearch.toLowerCase()
-        const matchTitle = act.title?.toLowerCase().includes(query)
-        const matchActor = act.actorName?.toLowerCase().includes(query)
-        const matchDetails = act.details?.toLowerCase().includes(query)
-        if (!matchTitle && !matchActor && !matchDetails) return false
-      }
+      if (!activityMatchesSearch(act, filterSearch)) return false
       return true
     })
   }, [activities, filterProject, filterEntity, filterAction, filterActor, filterFrom, filterTo, filterSearch])

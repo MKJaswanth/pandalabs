@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { newId } from '../utils/id'
 import { deleteBug, getBugs, getBugsRaw, isDeleted, mergeById, removeBugReferencesFromRuns, saveBug, setBugs as setBugsCache, getCurrentUser } from '../utils/storage'
+import { isValidBugId, moduleCode, nextBugId } from '../utils/bugId'
 import { deleteBugRemote, saveBugRemote, saveRunDraftRemote, saveTestRunRemote, subscribeBugs } from '../utils/remoteStorage'
 import { useRemoteSync } from './useRemoteSync'
 import { auth } from '../utils/firebase'
@@ -23,6 +24,45 @@ export function useBugs(projectId) {
     })
   }, [projectId, remoteReady])
 
+  // One-time backfill: assign canonical BUG-XX-NNN ids to any bug with a blank
+  // or non-conforming id. Existing valid ids are left untouched so references
+  // people already know don't shift. Numbering continues per module from the
+  // highest existing valid id for that module.
+  const backfillBugIds = useCallback(() => {
+    const current = getBugs(projectId)
+    const invalid = current.filter((b) => !isValidBugId(b.sourceBugId))
+    if (invalid.length === 0) return
+
+    const counters = {}
+    current.forEach((b) => {
+      const match = /^BUG-([A-Z]{2})-(\d+)$/.exec(b.sourceBugId || '')
+      if (match) counters[match[1]] = Math.max(counters[match[1]] || 0, parseInt(match[2], 10))
+    })
+
+    // Oldest first so numbering follows creation order.
+    const ordered = [...invalid].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    ordered.forEach((b) => {
+      const code = moduleCode(b.module)
+      const next = (counters[code] || 0) + 1
+      counters[code] = next
+      const updated = { ...b, sourceBugId: `BUG-${code}-${String(next).padStart(3, '0')}` }
+      saveBug(projectId, updated)
+      if (remoteReady) saveBugRemote(projectId, updated)
+    })
+    setBugs(getBugs(projectId))
+  }, [projectId, remoteReady])
+
+  const backfilledFor = useRef('')
+  useEffect(() => {
+    if (!projectId || backfilledFor.current === projectId) return undefined
+    if (bugs.length === 0) return undefined
+    backfilledFor.current = projectId
+    // Defer so the state update happens outside the synchronous effect body.
+    let cancelled = false
+    queueMicrotask(() => { if (!cancelled) backfillBugIds() })
+    return () => { cancelled = true }
+  }, [projectId, bugs.length, backfillBugIds])
+
   const addBug = useCallback((data) => {
     const creatorId = auth?.currentUser?.uid || ''
     const creatorName = getCurrentUser() || ''
@@ -37,28 +77,10 @@ export function useBugs(projectId) {
     if (!bug.reportedDate) {
       bug.reportedDate = new Date().toISOString().slice(0, 10)
     }
-    if (!bug.sourceBugId) {
-      const projectBugs = getBugs(projectId)
-      const numbers = projectBugs.map((b) => {
-        const match = /BUG-[A-Z]{2}-(\d+)/.exec(b.sourceBugId)
-        return match ? parseInt(match[1], 10) : 0
-      })
-      const nextNum = Math.max(0, ...numbers) + 1
-      const seqStr = String(nextNum).padStart(3, '0')
-
-      const moduleName = (bug.module || '').trim()
-      let modCode = 'GE'
-      if (moduleName) {
-        const alphabetic = moduleName.replace(/[^a-zA-Z]/g, '')
-        if (alphabetic.length >= 2) {
-          modCode = alphabetic.slice(0, 2).toUpperCase()
-        } else if (alphabetic.length === 1) {
-          modCode = (alphabetic + 'X').toUpperCase()
-        } else {
-          modCode = 'GE'
-        }
-      }
-      bug.sourceBugId = `BUG-${modCode}-${seqStr}`
+    // Always enforce the canonical BUG-XX-NNN format. Blank IDs (normal flow)
+    // and invalid ones (free-form or imported) are (re)generated per module.
+    if (!isValidBugId(bug.sourceBugId)) {
+      bug.sourceBugId = nextBugId(bug.module, getBugs(projectId))
     }
     saveBug(projectId, bug)
     setBugs(getBugs(projectId))

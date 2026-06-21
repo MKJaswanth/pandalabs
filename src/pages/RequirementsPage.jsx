@@ -5,10 +5,14 @@ import { StatusPill } from '../components/StatusPill'
 import { Modal } from '../components/Modal'
 import { useRequirements } from '../hooks/useRequirements'
 import { useTestCases } from '../hooks/useTestCases'
+import { useBugs } from '../hooks/useBugs'
+import { RequirementBulkUploadModal } from '../components/RequirementBulkUploadModal'
 import { useConfirm } from '../context/useConfirm'
 import { useToast } from '../context/useToast'
 import { normalizeTestStatus } from '../utils/status'
 import { useUserRole } from '../hooks/useUserRole'
+import { requirementMatchesSearch } from '../utils/entitySearch'
+import { testCaseMatchesSearch } from '../utils/testCaseSearch'
 
 const PRIORITIES = ['High', 'Medium', 'Low']
 
@@ -34,6 +38,7 @@ export function RequirementsPage() {
   const { projectId, requirementId } = useParams()
   const { requirements, addRequirement, updateRequirement, removeRequirement } = useRequirements(projectId)
   const { testCases } = useTestCases(projectId)
+  const { bugs } = useBugs(projectId)
   const { isLead } = useUserRole()
   const confirm = useConfirm()
   const toast = useToast()
@@ -43,6 +48,7 @@ export function RequirementsPage() {
   const [form, setForm] = useState(blankForm)
   const [tcSearch, setTcSearch] = useState('')
   const [search, setSearch] = useState('')
+  const [showImport, setShowImport] = useState(false)
 
   const tcById = useMemo(() => new Map(testCases.map((tc) => [tc.id, tc])), [testCases])
 
@@ -52,14 +58,10 @@ export function RequirementsPage() {
     .map((req) => ({ req, cov: coverageOf(req, tcById) }))
 
   const filteredRows = useMemo(() => {
-    if (!search.trim()) return rows
-    const q = search.trim().toLowerCase()
-    return rows.filter(({ req }) =>
-      (req.title || '').toLowerCase().includes(q) ||
-      (req.key || '').toLowerCase().includes(q) ||
-      (req.description || '').toLowerCase().includes(q)
-    )
+    return rows.filter(({ req }) => requirementMatchesSearch(req, search))
   }, [rows, search])
+
+  const uncoveredCount = rows.filter(({ cov }) => cov.total === 0).length
 
   const totalReqs = requirements.length
   const coveredReqs = rows.filter((r) => r.cov.total > 0).length
@@ -112,9 +114,7 @@ export function RequirementsPage() {
   }
 
   const filteredTcs = testCases.filter((tc) => {
-    const q = tcSearch.trim().toLowerCase()
-    if (!q) return true
-    return (tc.title || '').toLowerCase().includes(q) || (tc.sourceTcId || '').toLowerCase().includes(q)
+    return testCaseMatchesSearch(tc, tcSearch)
   })
 
   if (requirementId) {
@@ -136,6 +136,7 @@ export function RequirementsPage() {
     }
 
     const { req, cov } = detail
+    const linkedBugs = bugs.filter((b) => b.linkedRequirementId === req.id)
     return (
       <>
         <PageHeader
@@ -146,7 +147,7 @@ export function RequirementsPage() {
               <Link to={`/projects/${projectId}/requirements`} className="secondary-button">Back</Link>
               {cov.total > 0 && isLead && (
                 <Link 
-                  to={`/projects/${projectId}/test-runs?runCases=${req.testCaseIds.join(',')}&reqKey=${encodeURIComponent(req.key || '')}&reqTitle=${encodeURIComponent(req.title)}`} 
+                  to={`/projects/${projectId}/test-runs?runCases=${req.testCaseIds.join(',')}&reqId=${req.id}&reqKey=${encodeURIComponent(req.key || '')}&reqTitle=${encodeURIComponent(req.title)}`} 
                   className="primary-button"
                   style={{ textDecoration: 'none' }}
                 >
@@ -212,6 +213,40 @@ export function RequirementsPage() {
                       <td>{tc.module || '—'}</td>
                       <td>{tc.priority || '—'}</td>
                       <td><StatusPill tone={normalizeTestStatus(tc.status) === 'Pass' ? 'passed' : ['Fail', 'Blocker'].includes(normalizeTestStatus(tc.status)) ? 'failed' : 'pending'}>{tc.status || 'Not Executed'}</StatusPill></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="section-header req-detail-section-head">
+            <h2>Linked bugs</h2>
+            <StatusPill tone="neutral">{linkedBugs.length}</StatusPill>
+          </div>
+
+          {linkedBugs.length === 0 ? (
+            <div className="req-detail-empty">
+              <p>No bugs linked to this requirement yet.</p>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="rpt-table">
+                <thead>
+                  <tr>
+                    <th>Bug ID</th>
+                    <th>Title</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linkedBugs.map((bug) => (
+                    <tr key={bug.id}>
+                      <td className="mono tc-id">{bug.sourceBugId || bug.id.slice(0, 8).toUpperCase()}</td>
+                      <td><Link className="text-link" to={`/projects/${projectId}/bugs`}>{bug.title}</Link></td>
+                      <td>{bug.severity || '—'}</td>
+                      <td><StatusPill tone={bug.status === 'Closed' ? 'passed' : 'failed'}>{bug.status}</StatusPill></td>
                     </tr>
                   ))}
                 </tbody>
@@ -290,7 +325,12 @@ export function RequirementsPage() {
       <PageHeader
         title="Requirements"
         description="Track which features are covered by tests and whether they pass."
-        action={<button className="primary-button" type="button" onClick={openAdd}>+ Add requirement</button>}
+        action={
+          <div className="page-actions-row">
+            <button className="secondary-button" type="button" onClick={() => setShowImport(true)}>Import CSV</button>
+            <button className="primary-button" type="button" onClick={openAdd}>+ Add requirement</button>
+          </div>
+        }
       />
 
       {totalReqs > 0 && (
@@ -334,6 +374,11 @@ export function RequirementsPage() {
               <span className="req-stat-label">Failing</span>
               <strong>{failingReqs}</strong>
             </div>
+            <div className="req-stat">
+              <span className="req-stat-dot req-stat-dot--uncovered" />
+              <span className="req-stat-label">Uncovered</span>
+              <strong>{uncoveredCount}</strong>
+            </div>
           </div>
         </section>
       )}
@@ -352,6 +397,7 @@ export function RequirementsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+
           </div>
         )}
         {totalReqs === 0 ? (
@@ -443,7 +489,7 @@ export function RequirementsPage() {
                         {cov.total > 0 && isLead && (
                           <Link 
                             className="icon-btn-action" 
-                            to={`/projects/${projectId}/test-runs?runCases=${req.testCaseIds.join(',')}&reqKey=${encodeURIComponent(req.key || '')}&reqTitle=${encodeURIComponent(req.title)}`} 
+                            to={`/projects/${projectId}/test-runs?runCases=${req.testCaseIds.join(',')}&reqId=${req.id}&reqKey=${encodeURIComponent(req.key || '')}&reqTitle=${encodeURIComponent(req.title)}`} 
                             title="Run linked tests"
                             aria-label="Run linked tests"
                           >
@@ -529,6 +575,14 @@ export function RequirementsPage() {
           </form>
         </Modal>
       )}
+
+      <RequirementBulkUploadModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        testCases={testCases}
+        projectId={projectId}
+        onImport={(data) => addRequirement(data)}
+      />
     </>
   )
 }

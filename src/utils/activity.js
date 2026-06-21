@@ -24,6 +24,15 @@ function normalizeAction(action, type) {
     test_run_resumed: 'run_started',
     backup_restored: 'restored',
     backup_exported: 'exported',
+    requirement_created: 'created',
+    requirement_updated: 'updated',
+    requirement_deleted: 'deleted',
+    test_plan_created: 'created',
+    test_plan_updated: 'updated',
+    test_plan_deleted: 'deleted',
+    milestone_created: 'created',
+    milestone_updated: 'updated',
+    milestone_deleted: 'deleted',
   }
   
   return mapping[act] || act

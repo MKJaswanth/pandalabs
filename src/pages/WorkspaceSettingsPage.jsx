@@ -9,6 +9,7 @@ import { useToast } from '../context/useToast'
 import { useActivity } from '../hooks/useActivity'
 import { TrashIcon, CheckIcon, ShieldCheckIcon } from '../components/Icons'
 import { auth } from '../utils/firebase'
+import { memberMatchesSearch } from '../utils/entitySearch'
 
 // Inline SVG components for high-quality, modern icons
 const ProfileIcon = (props) => (
@@ -112,8 +113,7 @@ export function WorkspaceSettingsPage() {
 
   // Filtered members by search query
   const filteredMembers = members.filter((m) => {
-    const query = searchQuery.toLowerCase()
-    return m.name.toLowerCase().includes(query) || (m.email && m.email.toLowerCase().includes(query))
+    return memberMatchesSearch(m, searchQuery)
   })
 
   return (
